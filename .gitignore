@@ -131,3 +131,7 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# ignore build artifacts
+/build/artifacts/*
+

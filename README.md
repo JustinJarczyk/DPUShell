@@ -1,6 +1,7 @@
 # DPUShell
 
-## Assumptions Made
+## Setting up your development Environment
+
 - OS : ubuntu-16.04.3-server-amd64.iso
 - Download ISO URL : https://www.ubuntu.com/download/server
 - Credentials
@@ -65,6 +66,38 @@ Setup Networking (varies per machine)
 - ./bootstrap
 - make
 - make install
+
+--- 
+
+# setting up the ninja user
+- run /srv/DPUShell/build/build_install.sh, to cmake, build and setup the existing ninja users shell
+
+** for testing purposes, setup ssh key access for the ninja user saves you a lot of time by not having to enter in your password
+
+# Development and Testing
+
+- IDE: CLion (2017.2.2)
+- You can either develop directly on the linux machine or develop locally via the shared directory in Virtualbox
+- After coding to test your changes, run the /srv/DPUShell/build/build_install.sh script
+    - This will build and deploy your shell as the default shell for the test user
+- ssh into the vm as ninja@x.x.x.x and your shell will execute
+- repeat the process
+
+
+====================
+# Assumptions Made
+
+- Signals: https://www.tutorialspoint.com/unix/unix-signals-traps.htm
+    - Only monitoring the following signals
+    - SIGHUP	[1]	Hang up detected on controlling terminal or death of controlling process
+    - SIGINT	[2]	Issued if the user sends an interrupt signal (Ctrl + C)
+    - SIGQUIT	[3]	Issued if the user sends a quit signal (Ctrl + D)
+    - SIGTERM	[15]	Software termination signal (sent by kill by default)
+
+
+ 
+
+
 
 
       
