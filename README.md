@@ -21,6 +21,7 @@
 - As root install VirtualBox guest Additions ** needed for mounting shared directories 
     - apt-get update
     - apt-get install virtualbox-guest-dkms
+    - apt-get install zlib1g-dev // this adds in the zconf.h header file, needed to have variable arguments (...)
     - apt-get install -y dkms build-essential linux-headers-generic linux-headers-$(uname -r)
     - follow this tutorial: http://www.techrepublic.com/article/how-to-install-virtualbox-guest-additions-on-a-gui-less-ubuntu-server-host/
         - To mount the CD start the virtual machine and go to devices within the host machine menu

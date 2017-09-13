@@ -126,11 +126,9 @@ void *addJobsListJob(jobsllist *jobslist, job *j){
 //////////////////////////////////////////////////////////////////
 // COMMAND STRUCTURES (holds all information about commands and builtin commands
 //////////////////////////////////////////////////////////////////
-
 const int NO_CHARACTER = 0;
 const int GREATER_THAN_SYMBOL = 1;
 const int LESS_THAN_SYMBOL = 2;
-const int DOUBLE_GREATER_THAN_SYMBOL = 3;
 
 // holds the context in which the commands will be processed
 // errors, symbols, etc... as well as commands.
@@ -138,7 +136,6 @@ typedef struct shellcontext
 {
     int greater_than_count;
     int less_than_count;
-    int triple_or_more_greater_than_symbol_errors;
     struct shellcommand *shellcommand;
 
 } shellcontext;
@@ -148,8 +145,6 @@ typedef struct shellcommand
 {
     // individual command
     char *command;
-    char *base_command;
-    char *arguments;
     int proceeding_special_character;
     struct shellcommand *next;
 } shellcommand;
@@ -173,47 +168,11 @@ int isValueInArray(int val, int *arr, int size){
     return 0;
 }
 
-shellcontext* processCommand(char* input){
+shellcontext* processCommand(char* command){
 
-    char cmd[strlen(input)+1];
-    strncpy(cmd, input, sizeof(cmd));
 
     shellcommand *c = (struct shellcommand *)malloc(sizeof(struct shellcommand));
 
-    // trim command trailing/leading characters
-    char command_to_clean[strlen(cmd)];
-
-    int titor = 0;
-    int trim_leading = 1;
-
-    for(int u=0; u<strlen(cmd); u++){
-        if (trim_leading && (cmd[u] == ' ')) continue;
-        command_to_clean[titor] = cmd[u];
-        titor++;
-        trim_leading = 0;
-    }
-
-    // remove trailing whitespace
-    int w;
-    for(w=titor-1; w > 0; w--){
-        if(command_to_clean[w] == ' '){
-            titor--;
-        } else {
-            break;
-        }
-    }
-
-    char cleaned_command[titor];
-    for(int q=0; q<titor; q++){
-        cleaned_command[q] = command_to_clean[q];
-    }
-
-    cleaned_command[titor] = '\0';
-    char* command = malloc(strlen(cleaned_command) + 1);
-    strcpy(command, cleaned_command);
-
-
-    // begin processing arrays and positions
     int greater_than_count = 0;
     int less_than_count = 0;
 
@@ -237,6 +196,7 @@ shellcontext* processCommand(char* input){
     int less_than_positions[less_than_count+1];
     greater_than_positions[0] = -1;
     less_than_positions[0] = -1;
+
 
     int k;
     for(k=0; command[k]!= '\0';k++){
@@ -287,11 +247,8 @@ shellcontext* processCommand(char* input){
     //initialize first shell command if > or < is in the first position of command
     if ((command[0] == '<')||(command[0] == '>')){
 
-        char placeholder[2];
-        placeholder[0] = '\0';
-        tmpshcmd->command = malloc( strlen(placeholder) + 1);
-        strcpy(tmpshcmd->command, placeholder);
-
+        tmpshcmd->command = malloc(strlen("") + 1);
+        strcpy(tmpshcmd->command, "");
 
         // determine the proceeding symbol
         if( isValueInArray(0, greater_than_positions, greater_than_count) ){
@@ -324,36 +281,17 @@ shellcontext* processCommand(char* input){
             char tmp[chars_in_between_indexes + 1];
             int tmpitor = 0;
 
-            int search_for_leading_whitespace = 1;
             int m;
             for (m=idx; m <= next-1; m++){
-                // bypass leading whitespace
-                if ((search_for_leading_whitespace) && (command[m] == ' ')) continue;
                 tmp[tmpitor] = command[m];
                 tmpitor++;
-                search_for_leading_whitespace = 0;
-            }
-
-            // remove trailing whitespace
-            int n;
-            for(n=tmpitor-1; n > 0; n--){
-                if(tmp[n] == ' '){
-                    tmpitor--;
-                } else {
-                    break;
-                }
-            }
-            // create a new array without trailing characters
-            char rmtrailing[tmpitor];
-            for(int g=0; g<tmpitor; g++){
-                rmtrailing[g] = tmp[g];
             }
 
             if (tmp[0] != '\0'){
-                rmtrailing[tmpitor] = '\0';
+                tmp[tmpitor] = '\0';
 
-                tmpshcmd->command = malloc(strlen(rmtrailing) + 1);
-                strcpy(tmpshcmd->command, rmtrailing);
+                tmpshcmd->command = malloc(strlen(tmp) + 1);
+                strcpy(tmpshcmd->command, tmp);
 
                 // determine the proceeding symbol
                 if( isValueInArray(m, greater_than_positions, greater_than_count) ){
@@ -361,135 +299,30 @@ shellcontext* processCommand(char* input){
                 } else if( isValueInArray(next, less_than_positions, less_than_count)){
                     tmpshcmd->proceeding_special_character = LESS_THAN_SYMBOL;
                 } else {
-
                     tmpshcmd->proceeding_special_character = NO_CHARACTER;
                 }
                 tmpshcmd->next = (struct shellcommand *)malloc(sizeof(struct shellcommand));
                 tmpshcmd = tmpshcmd->next;
                 tmpshcmd->next=NULL;
             }
-        }  else {
-            // handle the double symbol case [>>]
-            if (command[idx-1] == '>' && command[next] == '>') {
-                tmpshcmd->command = malloc(2);
-                char carrots[3];
-                carrots[0] = command[idx-1];
-                carrots[1] = command[next];
-                carrots[2] = '\0';
+        } else {
 
-                strcpy(tmpshcmd->command, carrots);
-                tmpshcmd->proceeding_special_character = DOUBLE_GREATER_THAN_SYMBOL;
-                tmpshcmd->next = (struct shellcommand *)malloc(sizeof(struct shellcommand));
-                tmpshcmd = tmpshcmd->next;
-                tmpshcmd->next = NULL;
-
-            }
+            tmpshcmd->command = malloc(2);
+            strcpy(tmpshcmd->command, "");
+            tmpshcmd->proceeding_special_character = NO_CHARACTER;
+            tmpshcmd->next = NULL;
         }
-
-
         idx = next+1;
     }
 
-    int triple_or_more_greater_than_symbol_errors = 0;
-    // clean up the linked list of commands
-    shellcommand* ll = c;
-    while (ll->next != NULL) {
-        // clean up >> & >>> duplicate entries
-        if ((ll->proceeding_special_character == GREATER_THAN_SYMBOL) &&
-                (ll->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL)){
-            // we have a potential case of >> or >>> n+1
-            // we need to verify that the next of the next symbol is not mis interpreted as >>
-            // this is an error case that needs to be accounted for
-            if ((ll->next->next != NULL) &&
-                    (ll->next->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL)){
-                // we have hit the edge case of >>> or >> + n*(>) example: >>>>>>>>>>>
-                shellcommand* ltmp = ll->next;
-                while(ltmp->next != NULL
-                      && ltmp->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL){
-                    shellcommand* lltmp = ltmp;
-                    ltmp = ltmp->next;
-                    free(lltmp);
-                }
-                // we've by passed all of the double characters links now to clean up to indicate the error
-                ll->proceeding_special_character = DOUBLE_GREATER_THAN_SYMBOL;
-                ltmp->command[1]= '\0'; // remove the >> make >
-                ltmp->proceeding_special_character = GREATER_THAN_SYMBOL;
-                triple_or_more_greater_than_symbol_errors = 1;
+    // clean shell commands trim [leading/tailing] white spaces
 
-                if(ltmp->next != NULL) {
-                    ll->next = ltmp;
-                } else {
-                    ll->next = NULL;
-                }
 
-            } else {
-                // we have hit the >> case and need to clean up the mis-interpretation
-                shellcommand* ltmp = ll->next;
-                ll->proceeding_special_character = DOUBLE_GREATER_THAN_SYMBOL;
-                // skip the >> link and go to the next command
-                if (ll->next->next!=NULL) {
-                    ll->next = ltmp->next;
-                    free(ltmp);
-                } else {
-                    ll->next = NULL;
-                }
-                // keep the correct count for the input redirects
-                greater_than_count = greater_than_count-2;
-            }
-        }
 
-        ll = ll->next;
-    }
-
-    shellcommand* lll = c;
-    // get the arguments from the context
-    while (lll->next != NULL) {
-        if (lll->command != NULL && lll->command[0] != '\0'){
-
-            int bitor = 0;
-            int aitor = 0;
-
-            char base_command[strlen(lll->command)];
-            char arguments[strlen(lll->command)];
-
-            int done_with_base = 0;
-
-            for(int i=0;i < strlen(lll->command);i++){
-
-                if (!done_with_base){
-                    // process the base command
-                    if ((lll->command[i] != '\0') && lll->command[i] != ' '){
-                        base_command[bitor] = lll->command[i];
-                        bitor++;
-                    }
-                    if (lll->command[i] == ' '){
-                        done_with_base = 1;
-                    }
-                } else {
-                    // process the arguments
-                    if ((lll->command[i] != '\0')){
-                        arguments[aitor] = lll->command[i];
-                        aitor++;
-                    }
-                }
-            }
-
-            base_command[bitor] = '\0';
-            arguments[aitor] = '\0';
-
-            c->base_command = malloc(bitor + 1);
-            strcpy(c->base_command, base_command);
-
-            c->arguments = malloc(aitor + 1);
-            strcpy(c->arguments, arguments);
-        }
-        lll = lll->next;
-    }
 
     shellcontext *sc = (struct shellcontext *)malloc(sizeof(struct shellcontext));
     sc->greater_than_count = greater_than_count;
     sc->less_than_count = less_than_count;
-    sc->triple_or_more_greater_than_symbol_errors = triple_or_more_greater_than_symbol_errors;
     sc->shellcommand = c;
 
     return sc;
@@ -497,115 +330,55 @@ shellcontext* processCommand(char* input){
 }
 
 
-int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx){
+int isBuiltinShellCommand(jobsllist *jobslist, char *command){
 
     int retVal = 0;
 
-    //printf("base_command = [%s]\n", shcntx->shellcommand->base_command);
-    //printf("arguements = [%s]\n", shcntx->shellcommand->arguments);
-
-
-
     // built in shell command, list jobs
-    if (strcmp(shcntx->shellcommand->base_command,"jobs") == 0){
+    if (strcmp(command,"jobs") == 0){
         listJobsListJobs(jobslist);
         retVal = 1;
     }
-    if (strcmp(shcntx->shellcommand->base_command,"cd") == 0){
-        // check to make sure directory is specified within the arguements
-        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0'){
-            chdir(shcntx->shellcommand->arguments);
-        } else {
-            printf("ERROR - Can’t cd without a file path");
-        }
-        retVal = 1;
-    }
-    if (strcmp(shcntx->shellcommand->base_command,"ln") == 0){
-
-
-        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0'){
-
-            // need to split the source and destination into 2 from the arguements.
-
-
-        } else {
-            printf("ERROR - Can't link without source/destination");
-        }
-        // use the link command
-
-
-        retVal = 1;
-    }
-
-    /*
-    if (strcmp(shcntx->shellcommand->base_command,"jobs") == 0){
-
-        retVal = 1;
-    }
-    */
 
     return retVal;
 }
 
 const int TOO_MANY_INPUT_REDIRECTS_IN_1_LINE = 1000;
 const int NO_REDIRECTION_FILE_SPECIFIED = 2000;
-const int TRIPLE_OR_MORE_GREATER_THAN_SYMBOLS = 3000;
-const int NO_COMMAND = 4000;
+
 //  1) no 2 input redirects in 1 line
 //  2) redirection file must be specified
 
 int shellCommandErrorsExist(shellcontext *shellcontext){
     int response = 0;
 
-    // check if >>> or more exist in a line
-    if(shellcontext->triple_or_more_greater_than_symbol_errors){
-        response = TRIPLE_OR_MORE_GREATER_THAN_SYMBOLS;
-    }
-
     // check for too many redirects
-    if((response == 0) && (shellcontext->less_than_count > 1)){
-
+    if(shellcontext->greater_than_count > 1){
         response = TOO_MANY_INPUT_REDIRECTS_IN_1_LINE;
     }
 
-
-
     // check for valid input file
     shellcommand * l = shellcontext->shellcommand;
-    while ((response == 0) && (l->next != NULL)) {
+    while (l->next != NULL) {
         // check for redirect
         if ((l->proceeding_special_character == LESS_THAN_SYMBOL) &&
                 (l->next != NULL)){
 
-            // NEED TO HANDLE NULL LOGIC DOWN HERE
-
             // check for valid input not ""
-            if (l->next->command == '\0'){
+            if (l->next->command == ""){
                 response = NO_REDIRECTION_FILE_SPECIFIED;
             } else {
-                // check if file exists on disk to redirect from
-                // case :  [cat < file.txt]
-                // TODO://
+                // there is something here, check on disk to figure out if the file exists
+
             }
-
-
         }
+
 
         l = l->next;
     }
+    response = NO_REDIRECTION_FILE_SPECIFIED;
 
-    // check for valid command
-    shellcommand * ll = shellcontext->shellcommand;
-    while ((response == 0) && (ll->next != NULL)) {
 
-        // Check fo rthe correct
-        if ((ll->proceeding_special_character == GREATER_THAN_SYMBOL) &&
-                (ll->command[0] == '\0')){
-            // ERROR ERROR - No command.
-            response = NO_COMMAND;
-        }
-        ll = ll->next;
-    }
 
     return response;
 }
@@ -649,39 +422,23 @@ int main(int argc, char **argv, char **envp) {
 
         if (strlen(command) == 0) continue;
 
-        // get the shell context and process command for execution
-        shellcontext* shcntx = processCommand(command);
-
-        listShellCommands(shcntx->shellcommand);
-
-        int errors_exist = 0;
-
-        switch (shellCommandErrorsExist(shcntx)){
-
-            case TOO_MANY_INPUT_REDIRECTS_IN_1_LINE:
-                printf("ERROR - Can’t have two input redirects on one line\n");
-                errors_exist = 1;
-                break;
-            case NO_REDIRECTION_FILE_SPECIFIED:
-                printf("ERROR - No redirection file specified\n");
-                errors_exist = 1;
-                break;
-            case TRIPLE_OR_MORE_GREATER_THAN_SYMBOLS:
-                printf("ERROR - Cannot have >>> or more [>]\n");
-                errors_exist = 1;
-                break;
-            case NO_COMMAND:
-                printf("ERROR - No command\n");
-                errors_exist = 1;
-                break;
-        }
-
         // check for builtin shell commands
-        if (!isBuiltinShellCommand(shelljobs, shcntx) && !errors_exist){
+        if (!isBuiltinShellCommand(shelljobs, command)){
 
-            //
+            // get the shell context and process command for execution
+            shellcontext* shcntx = processCommand(command);
 
+            switch (shellCommandErrorsExist(shcntx)){
 
+                case TOO_MANY_INPUT_REDIRECTS_IN_1_LINE:
+                    printf("ERROR - Can’t have two input redirects on one line.\n");
+                    free(shcntx);
+                    continue;
+                case NO_REDIRECTION_FILE_SPECIFIED:
+                    printf("ERROR - No redirection file specified.\n");
+                    free(shcntx);
+                    continue;
+            }
 
 
             //printf("greater than count = [%i]\n", shcntx->greater_than_count);
@@ -689,7 +446,7 @@ int main(int argc, char **argv, char **envp) {
             //listShellCommands(shcntx->shellcommand);
 
 
-
+            /*
 
 
             pid_t child_pid, wait_pid;
@@ -705,10 +462,10 @@ int main(int argc, char **argv, char **envp) {
 
                 // we won't get here unless execve failed
                 if (errno == ENOENT){
-                    printf("sh: command not found: [%s]\n", argv[0]);
+                    printf("sh: command not found: \n", argv[0]);
                     exit(1);
                 } else {
-                    printf("sh: execution of %s failed: [%s]\n", argv[0], strerror(errno));
+                    printf("sh: execution of %s failed: \n", argv[0], strerror(errno));
                     exit(1);
                 }
             } else {
@@ -730,7 +487,7 @@ int main(int argc, char **argv, char **envp) {
                 }
 
             }
-
+            */
         }
 
 
