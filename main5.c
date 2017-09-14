@@ -4,9 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+
 
 #define PIPE_READ 0
 #define PIPE_WRITE 1
@@ -48,20 +46,18 @@ typedef struct job {
     int pid;
     int state;
     char *command;
-    size_t process_stdout_read_address;
 } job;
 
 // because chars can be of variable size
 // we need to allocate them based on the command
 // we don't want to over allocate memory -> inefficient
-job *createJob(int pid, char* output_address_pointer, int state, char *command) {
+job *createJob(int pid, int state, char *command) {
 
     job *j = (struct job *) malloc(sizeof(struct job));
     j->id = -1; // initialize with -1 until added to the jobslist
     j->pid = pid;
     j->state = state;
     j->command = strdup(command);
-    j->process_stdout_read_address = (size_t)output_address_pointer;
 
     return j;
 }
@@ -86,39 +82,12 @@ job *getJobFromJobsListById(jobsllist *jobs, int id) {
     return NULL;
 }
 
-
-void *removeJobFromJobsListByPID(jobsllist *jobs, int pid) {
-    jobsllist *l = jobs;
-    jobsllist *prev = NULL;
-    while (l != NULL) {
-        if (l->job->pid == pid){
-          if (l->next != NULL){
-              jobsllist *tmp = l;
-              prev->next = l->next;
-              free(tmp);
-          }  else {
-              if (prev != NULL){
-                  // isn't the base DPUShell Job
-                  prev->next = NULL;
-                  free(l->job);
-                  free(l);
-              }
-          }
-        }
-        prev = l;
-        l = l->next;
-    }
-    return 0;
-}
-
-
 void *listJobsListJobs(jobsllist *jobs) {
     jobsllist *l = jobs;
     while (l != NULL) {
 
-        if (l->job->id != 0){ // bypass the DPUSHell Job
-            printf("[%i]\t[%i]\t[%i]\t[%s]\n", l->job->id, l->job->pid, l->job->state, l->job->command);
-        }
+        printf("[%i]\t[%i]\t[%i]\t[%s]\n", l->job->id, l->job->pid, l->job->state, l->job->command
+        );
         l = l->next;
     }
     return 0;
@@ -534,14 +503,12 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
         // check to make sure directory is specified within the arguements
         if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0') {
 
-            int chdir_result;
-            if (shcntx->shellcommand->arguments[0] == '~'){
-                chdir_result = chdir(getenv("HOME")); // TODO:// handle the case where ~/dir/dir, this only takes into account cd ~
-            } else {
-                chdir_result = chdir(shcntx->shellcommand->arguments);
+            int chdir_result = chdir(shcntx->shellcommand->arguments);
+            if (chdir_result < 0){
+                perror("cannot change directory");
             }
 
-            if (chdir_result < 0) perror("cannot change directory");
+
         } else {
             printf("ERROR - Can’t cd without a file path");
         }
@@ -598,8 +565,9 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
         } else {
             printf("ERROR - Can't link without source/destination");
         }
-
         // use the link command
+
+
         retVal = 1;
     }
 
@@ -675,56 +643,7 @@ static jobsllist shelljobs[0];
 #define PIPE_READ 0
 #define PIPE_WRITE 1
 
-
-
-
-///////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////
-
-/// to implement background & foreground jobs use: https://stackoverflow.com/questions/31097058/sending-signal-from-parent-to-child
-
-
-// register the following signals in the child
-void sighup(int signo) {
-    signal(SIGHUP,sighup); /* reset signal */
-    printf("CHILD: I have received a SIGHUP\n");
-}
-
-void sigint(int signo) {
-    signal(SIGINT,sigint); /* reset signal */
-    printf("CHILD: I have received a SIGINT\n");
-}
-
-void sigquit(int signo) {
-    printf("My DADDY has Killed me!!!\n");
-    exit(0);
-}
-
-void sigchld(int signo){
-
-    pid_t pid;
-    int   status;
-    while ((pid = waitpid(-1, &status, WNOHANG)) != -1)
-    {
-        // removes the jobs when finished from the jobs list
-        //listJobsListJobs(shelljobs);
-        removeJobFromJobsListByPID(shelljobs, pid);
-        //listJobsListJobs(shelljobs);
-    }
-}
-
-///////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////
-
-
-
 int main(int argc, char **argv, char **envp) {
-
-    signal(SIGHUP, sighup);
-    signal(SIGINT, sigint);
-    signal(SIGQUIT, sigquit);
-    signal(SIGCHLD, sigchld);
-
 
     // set the starting dir
     chdir(getenv("HOME"));
@@ -732,28 +651,18 @@ int main(int argc, char **argv, char **envp) {
     char command[MAX_READ_SIZE];
 
     // add the shell to the jobs list
-    addJobsListJob(shelljobs, createJob(getpid(), NULL, RUNNING_FOREGROUND, "/bin/DPUShell"));
+    addJobsListJob(shelljobs, createJob(getpid(), RUNNING_FOREGROUND, "/bin/DPUShell"));
 
     // register [Ctrl+C] SIGINT handler
-
     if (signal(SIGINT, signal_handler) == SIG_ERR){
         printf("cannot register SIGINT handler\n");
     }
 
 
-
     // start the event shell
     while (1) {
-
-        /// clean buffer
-        for (int i = 0; i < MAX_READ_SIZE; i++) command[i] = 0;
-
-        #ifndef NOPROMPT
-        char cwd[1024];
-        getcwd(cwd, sizeof(cwd));
-        printf("[%s]> ", cwd);
+        printf("&> ");
         fflush(stdout);
-        #endif
 
         // get user input
         if (!dpuread(command)) {
@@ -814,87 +723,101 @@ int main(int argc, char **argv, char **envp) {
                 return -1;
             }
 
+
+
+
             child_pid = fork();
-            if (0 == child_pid) { //child
+            if (0 == child_pid) {
+                // child continues here
 
-                // logic for dealing with redirects TODO:// a case where there is [  sort>out.txt<file.txt ] ** input is set to file.txt, then read by sort and output to out.txt
-                if (shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == LESS_THAN_SYMBOL) {
-                    int fin = open(shcntx->shellcommand->next->command, O_RDONLY);
-                    if (dup2(fin, STDIN_FILENO) == -1) exit(errno);
-                    close(fin);
-                } else {
-                    if (dup2(stdinPipe[PIPE_READ], STDIN_FILENO) == -1) exit(errno);
+                // redirect stdin
+                if (dup2(stdinPipe[PIPE_READ], STDIN_FILENO) == -1) {
+                    exit(errno);
                 }
 
-                // handle the [command > file.txt] case
-                if (shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == GREATER_THAN_SYMBOL){ // write/overrwrite file
-
-                    // open up a file with the correct permissions
-                    int fout = open(shcntx->shellcommand->next->command, O_WRONLY | O_CREAT | O_TRUNC, 06666);
-                    if (dup2(fout, STDOUT_FILENO) == -1) exit(errno);
-                    if (dup2(fout, STDERR_FILENO) == -1) exit(errno);
-                    close(fout);
-                } else if(shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL) { // append to file
-                    // open up a file to append to
-                    int fout = open(shcntx->shellcommand->next->command, O_WRONLY | O_APPEND);
-                    if (dup2(fout, STDOUT_FILENO) == -1) exit(errno);
-                    if (dup2(fout, STDERR_FILENO) == -1) exit(errno);
-                    close(fout);
-                } else { // write to stdout
-
-                    if (dup2(stdoutPipe[PIPE_WRITE], STDOUT_FILENO) == -1) exit(errno);
-                    if (dup2(stdoutPipe[PIPE_WRITE], STDERR_FILENO) == -1) exit(errno);
-
+                // redirect stdout
+                if (dup2(stdoutPipe[PIPE_WRITE], STDOUT_FILENO) == -1) {
+                    exit(errno);
                 }
 
-                // close the parent pipes
+                // redirect stderr
+                if (dup2(stdoutPipe[PIPE_WRITE], STDERR_FILENO) == -1) {
+                    exit(errno);
+                }
+
+                // all these are for use by parent only
                 close(stdinPipe[PIPE_READ]);
                 close(stdinPipe[PIPE_WRITE]);
                 close(stdoutPipe[PIPE_READ]);
                 close(stdoutPipe[PIPE_WRITE]);
 
-                // split the arguments based on the whitespace
-                int itor=0;
-                int next_arr_ele = 0;
+
 
                 char *argv[100];
-                char tmpbuff[100];
 
+                char tmpbuff[100];
+                int next_arr_ele = 0;
+                int itor=0;
+
+
+                // split the arguments based on the whitespace
                 for (int i=0;i <= strlen(shcntx->shellcommand->command); i++){
 
                     if (((shcntx->shellcommand->command[i] == ' ') ||
                          (shcntx->shellcommand->command[i] == '\0')) && itor != 0){
+
                         tmpbuff[itor] = '\0';
+
                         argv[next_arr_ele] = malloc(itor + 1);
                         strcpy(argv[next_arr_ele], tmpbuff);
+
                         next_arr_ele++;
                         itor = 0;
                     } else {
+
                         tmpbuff[itor] = shcntx->shellcommand->command[i];
                         itor++;
                     }
                 }
                 argv[next_arr_ele] = NULL;
-                exec_result_code = execvp(argv[0], argv);
 
-                // exit with error code, if reaches this point
+                // run child process image
+                // replace this with any exec* function find easier to use ("man exec")
+
+
+                exec_result_code = execvp(argv[0], argv);
+                //exec_result_code = execlp(argv[0], argv, (char *) 0);
+                //exec_result_code = execlp(argv[0], argv[0], argv[1], (char *) 0);
+
+
+
+                //
+                //exec_result_code = execve(argv[0], argv, NULL);
+
+                // if we get here at all, an error occurred, but we are in the child
+                // process, so just exit
                 exit(exec_result_code);
             } else if (child_pid > 0) {
+
+                // creates new job, for the action
+                job *newjob = createJob(child_pid, RUNNING_FOREGROUND,
+                                        command); // TODO:// Insert the pid and the running state of the job
+                addJobsListJob(shelljobs, newjob);
+
+                // parent continues here
+
                 // close unused file descriptors, these are for child only
                 close(stdinPipe[PIPE_READ]);
                 close(stdoutPipe[PIPE_WRITE]);
 
-                // create job, store the process output address to read it
-                // this allows us to support bg/fg jobs
-                job *newjob = createJob(child_pid, &processOutput, RUNNING_FOREGROUND, command); // TODO:// Insert the pid and the running state of the job
-                addJobsListJob(shelljobs, newjob);
-
+                // Include error check here
+                //if (NULL != szMessage) {
+                //    write(aStdinPipe[PIPE_WRITE], szMessage, strlen(szMessage));
+                //}
 
                 // Just a char by char read here, you can change it accordingly
-                while (read(stdoutPipe[PIPE_READ], (void*)newjob->process_stdout_read_address, 1) == 1){
-
-                    write(STDOUT_FILENO, (void*)newjob->process_stdout_read_address, 1);
-
+                while (read(stdoutPipe[PIPE_READ], &processOutput, 1) == 1) {
+                    write(STDOUT_FILENO, &processOutput, 1);
                 }
 
                 // done with these in this example program, you would normally keep these
@@ -902,13 +825,20 @@ int main(int argc, char **argv, char **envp) {
                 close(stdinPipe[PIPE_WRITE]);
                 close(stdoutPipe[PIPE_READ]);
 
+            } else {
+                // failed to create child
+                close(stdinPipe[PIPE_READ]);
+                close(stdinPipe[PIPE_WRITE]);
+                close(stdoutPipe[PIPE_READ]);
+                close(stdoutPipe[PIPE_WRITE]);
+
             }
 
-            if (strcmp(shcntx->shellcommand->base_command, "exit") == 0){
-                exit(0);
-            }
-
+            /// dirty buffer need to clean to stop extra garbage from cropping up
+            for (int i = 0; i < MAX_READ_SIZE; i++)
+                command[i] = 0;
         }
+
     }
     return 0;
 }

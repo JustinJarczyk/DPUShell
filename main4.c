@@ -4,9 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+
 
 #define PIPE_READ 0
 #define PIPE_WRITE 1
@@ -21,7 +19,7 @@ const int MAX_COMMANDS_IN_ONE_LINER = 1024; // amount of total commands that can
 // Helpers, to meet project kernel requirements
 //////////////////////////////////////////////////////////////////
 
-int dpuread(char *command) {
+int dpuread(char* command){
     int num_read = read(STDIN_FILENO, command, MAX_READ_SIZE);
     return num_read;
 
@@ -30,9 +28,9 @@ int dpuread(char *command) {
 //////////////////////////////////////////////////////////////////
 // SIGNAL HANDLERS/ INTERRUPTS (create a method to handle signals)
 //////////////////////////////////////////////////////////////////
-void signal_handler(int signal_number) {
+void signal_handler(int signal_number){
     // catch <CTRL-C>
-    if (signal_number == SIGINT) {
+    if (signal_number == SIGINT){
         //dpulogerr("received SIGINT\n");
         printf("received SIGINT\n");
     }
@@ -43,39 +41,39 @@ void signal_handler(int signal_number) {
 //////////////////////////////////////////////////////////////////
 // holds all info for a shell job
 // struct reference: https://stackoverflow.com/questions/10162152/how-to-work-with-string-fields-in-a-c-struct
-typedef struct job {
+typedef struct job
+{
     int id;
     int pid;
     int state;
     char *command;
-    size_t process_stdout_read_address;
 } job;
 
 // because chars can be of variable size
 // we need to allocate them based on the command
 // we don't want to over allocate memory -> inefficient
-job *createJob(int pid, char* output_address_pointer, int state, char *command) {
+job *createJob(int pid, int state, char *command){
 
-    job *j = (struct job *) malloc(sizeof(struct job));
+    job *j = (struct job *)malloc(sizeof(struct job));
     j->id = -1; // initialize with -1 until added to the jobslist
     j->pid = pid;
     j->state = state;
     j->command = strdup(command);
-    j->process_stdout_read_address = (size_t)output_address_pointer;
 
     return j;
 }
 
 // create a job list
 // chose a linked list for easy traversal
-typedef struct jobsllist {
+typedef struct jobsllist
+{
     job *job;
     struct jobsllist *next;
 
 } jobsllist;
 
 // Jobs List helper methods
-job *getJobFromJobsListById(jobsllist *jobs, int id) {
+job *getJobFromJobsListById(jobsllist *jobs, int id){
     jobsllist *l = jobs;
     while (l != NULL) {
         if (l->job->id == id) {
@@ -86,49 +84,26 @@ job *getJobFromJobsListById(jobsllist *jobs, int id) {
     return NULL;
 }
 
-
-void *removeJobFromJobsListByPID(jobsllist *jobs, int pid) {
-    jobsllist *l = jobs;
-    jobsllist *prev = NULL;
-    while (l != NULL) {
-        if (l->job->pid == pid){
-          if (l->next != NULL){
-              jobsllist *tmp = l;
-              prev->next = l->next;
-              free(tmp);
-          }  else {
-              if (prev != NULL){
-                  // isn't the base DPUShell Job
-                  prev->next = NULL;
-                  free(l->job);
-                  free(l);
-              }
-          }
-        }
-        prev = l;
-        l = l->next;
-    }
-    return 0;
-}
-
-
-void *listJobsListJobs(jobsllist *jobs) {
+void *listJobsListJobs(jobsllist *jobs){
     jobsllist *l = jobs;
     while (l != NULL) {
 
-        if (l->job->id != 0){ // bypass the DPUSHell Job
-            printf("[%i]\t[%i]\t[%i]\t[%s]\n", l->job->id, l->job->pid, l->job->state, l->job->command);
-        }
+        printf("[%i]\t[%i]\t[%i]\t[%s]\n"
+                , l->job->id
+                , l->job->pid
+                , l->job->state
+                , l->job->command
+        );
         l = l->next;
     }
     return 0;
 }
 
 // adds job to the jobslist
-void *addJobsListJob(jobsllist *jobslist, job *j) {
+void *addJobsListJob(jobsllist *jobslist, job *j){
 
     // initialize first element, if not already
-    if (jobslist->job == NULL) {
+    if (jobslist->job == NULL){
         j->id = 0;
         jobslist->job = j;
         jobslist->next = NULL;
@@ -143,7 +118,7 @@ void *addJobsListJob(jobsllist *jobslist, job *j) {
         }
 
         j->id = jobid;
-        l->next = (struct jobsllist *) malloc(sizeof(struct jobsllist));
+        l->next = (struct jobsllist *)malloc(sizeof(struct jobsllist));
         l->next->job = j;
         l->next->next = NULL;
     }
@@ -161,7 +136,8 @@ const int DOUBLE_GREATER_THAN_SYMBOL = 3;
 
 // holds the context in which the commands will be processed
 // errors, symbols, etc... as well as commands.
-typedef struct shellcontext {
+typedef struct shellcontext
+{
     int greater_than_count;
     int less_than_count;
     int triple_or_more_greater_than_symbol_errors;
@@ -170,7 +146,8 @@ typedef struct shellcontext {
 } shellcontext;
 
 // struct to process command chains
-typedef struct shellcommand {
+typedef struct shellcommand
+{
     // individual command
     char *command;
     char *base_command;
@@ -180,7 +157,7 @@ typedef struct shellcommand {
 } shellcommand;
 
 
-void *listShellCommands(shellcommand *commands) {
+void *listShellCommands(shellcommand *commands){
     shellcommand *l = commands;
     while (l->next != NULL) {
         printf("[%s]\n[%i]\n", l->command, l->proceeding_special_character);
@@ -189,21 +166,21 @@ void *listShellCommands(shellcommand *commands) {
     return 0;
 }
 
-int isValueInArray(int val, int *arr, int size) {
+int isValueInArray(int val, int *arr, int size){
     int i;
-    for (i = 0; i < size; i++) {
+    for (i=0; i < size; i++) {
         if (arr[i] == val)
             return 1;
     }
     return 0;
 }
 
-shellcontext *processCommand(char *input) {
+shellcontext* processCommand(char* input){
 
-    char cmd[strlen(input) + 1];
+    char cmd[strlen(input)+1];
     strncpy(cmd, input, sizeof(cmd));
 
-    shellcommand *c = (struct shellcommand *) malloc(sizeof(struct shellcommand));
+    shellcommand *c = (struct shellcommand *)malloc(sizeof(struct shellcommand));
 
     // trim command trailing/leading characters
     char command_to_clean[strlen(cmd)];
@@ -211,7 +188,7 @@ shellcontext *processCommand(char *input) {
     int titor = 0;
     int trim_leading = 1;
 
-    for (int u = 0; u < strlen(cmd); u++) {
+    for(int u=0; u<strlen(cmd); u++){
         if (trim_leading && (cmd[u] == ' ')) continue;
         command_to_clean[titor] = cmd[u];
         titor++;
@@ -220,8 +197,8 @@ shellcontext *processCommand(char *input) {
 
     // remove trailing whitespace
     int w;
-    for (w = titor - 1; w > 0; w--) {
-        if (command_to_clean[w] == ' ') {
+    for(w=titor-1; w > 0; w--){
+        if(command_to_clean[w] == ' '){
             titor--;
         } else {
             break;
@@ -229,12 +206,12 @@ shellcontext *processCommand(char *input) {
     }
 
     char cleaned_command[titor];
-    for (int q = 0; q < titor; q++) {
+    for(int q=0; q<titor; q++){
         cleaned_command[q] = command_to_clean[q];
     }
 
     cleaned_command[titor] = '\0';
-    char *command = malloc(strlen(cleaned_command) + 1);
+    char* command = malloc(strlen(cleaned_command) + 1);
     strcpy(command, cleaned_command);
 
 
@@ -244,11 +221,12 @@ shellcontext *processCommand(char *input) {
 
     // get the counts to initialize the position arrays
     int z = 0;
-    for (z = 0; command[z] != '\0'; z++) {
-        if (command[z] == '>') {
+    for(z=0; command[z]!= '\0';z++){
+        //printf("char command[%i] = %c\n",z, command[z]);
+        if (command[z] == '>'){
             greater_than_count++;
         }
-        if (command[z] == '<') {
+        if (command[z] == '<'){
             less_than_count++;
         }
     }
@@ -257,18 +235,18 @@ shellcontext *processCommand(char *input) {
     int gposcount = 0;
     int lposcount = 0;
 
-    int greater_than_positions[greater_than_count + 1];
-    int less_than_positions[less_than_count + 1];
+    int greater_than_positions[greater_than_count+1];
+    int less_than_positions[less_than_count+1];
     greater_than_positions[0] = -1;
     less_than_positions[0] = -1;
 
     int k;
-    for (k = 0; command[k] != '\0'; k++) {
-        if (command[k] == '>') {
+    for(k=0; command[k]!= '\0';k++){
+        if (command[k] == '>'){
             greater_than_positions[gposcount] = k;
             gposcount++;
         }
-        if (command[k] == '<') {
+        if (command[k] == '<'){
             less_than_positions[lposcount] = k;
             lposcount++;
         }
@@ -286,7 +264,7 @@ shellcontext *processCommand(char *input) {
     int gpos = 0;
     int lpos = 0;
 
-    for (x = 0; x < (greater_than_count + less_than_count); x++) {
+    for (x = 0; x < (greater_than_count+ less_than_count); x++){
 
         if ((less_than_count > 0) && (greater_than_count > 0)) {
 
@@ -297,35 +275,35 @@ shellcontext *processCommand(char *input) {
                 special_char_positions[x] = less_than_positions[lpos];
                 lpos++;
             }
-        } else if (greater_than_count > 0) {
+        } else if (greater_than_count > 0){
             special_char_positions[x] = greater_than_positions[gpos];
             gpos++;
-        } else if (less_than_count > 0) {
+        } else if  (less_than_count > 0){
             special_char_positions[x] = less_than_positions[lpos];
             lpos++;
         }
     }
 
-    shellcommand *tmpshcmd = c;
+    shellcommand* tmpshcmd = c;
 
     //initialize first shell command if > or < is in the first position of command
-    if ((command[0] == '<') || (command[0] == '>')) {
+    if ((command[0] == '<')||(command[0] == '>')){
 
         char placeholder[2];
         placeholder[0] = '\0';
-        tmpshcmd->command = malloc(strlen(placeholder) + 1);
+        tmpshcmd->command = malloc( strlen(placeholder) + 1);
         strcpy(tmpshcmd->command, placeholder);
 
 
         // determine the proceeding symbol
-        if (isValueInArray(0, greater_than_positions, greater_than_count)) {
+        if( isValueInArray(0, greater_than_positions, greater_than_count) ){
             tmpshcmd->proceeding_special_character = GREATER_THAN_SYMBOL;
-        } else if (isValueInArray(0, less_than_positions, less_than_count)) {
+        } else if( isValueInArray(0, less_than_positions, less_than_count)){
             tmpshcmd->proceeding_special_character = LESS_THAN_SYMBOL;
         } else {
             tmpshcmd->proceeding_special_character = NO_CHARACTER;
         }
-        tmpshcmd->next = (struct shellcommand *) malloc(sizeof(struct shellcommand));
+        tmpshcmd->next = (struct shellcommand *)malloc(sizeof(struct shellcommand));
         tmpshcmd = tmpshcmd->next;
         tmpshcmd->next = NULL;
     }
@@ -333,24 +311,24 @@ shellcontext *processCommand(char *input) {
     int idx = 0; //hold the index bounds
     int next;
     int l;
-    for (l = 0; l <= (greater_than_count + less_than_count); l++) {
+    for(l=0;l <= (greater_than_count+ less_than_count); l++){
         // iterate over each position
-        if (l < (greater_than_count + less_than_count)) {
+        if (l < (greater_than_count+ less_than_count)){
             next = special_char_positions[l];
         } else {
             next = strlen(command) + 1;
         }
 
-        int chars_in_between_indexes = ((next - 1) - idx);
+        int chars_in_between_indexes = ((next-1)-idx);
         // check if anything exists between special characters
-        if (chars_in_between_indexes >= 0) {
+        if (chars_in_between_indexes >= 0){
 
             char tmp[chars_in_between_indexes + 1];
             int tmpitor = 0;
 
             int search_for_leading_whitespace = 1;
             int m;
-            for (m = idx; m <= next - 1; m++) {
+            for (m=idx; m <= next-1; m++){
                 // bypass leading whitespace
                 if ((search_for_leading_whitespace) && (command[m] == ' ')) continue;
                 tmp[tmpitor] = command[m];
@@ -360,8 +338,8 @@ shellcontext *processCommand(char *input) {
 
             // remove trailing whitespace
             int n;
-            for (n = tmpitor - 1; n > 0; n--) {
-                if (tmp[n] == ' ') {
+            for(n=tmpitor-1; n > 0; n--){
+                if(tmp[n] == ' '){
                     tmpitor--;
                 } else {
                     break;
@@ -369,41 +347,41 @@ shellcontext *processCommand(char *input) {
             }
             // create a new array without trailing characters
             char rmtrailing[tmpitor];
-            for (int g = 0; g < tmpitor; g++) {
+            for(int g=0; g<tmpitor; g++){
                 rmtrailing[g] = tmp[g];
             }
 
-            if (tmp[0] != '\0') {
+            if (tmp[0] != '\0'){
                 rmtrailing[tmpitor] = '\0';
 
                 tmpshcmd->command = malloc(strlen(rmtrailing) + 1);
                 strcpy(tmpshcmd->command, rmtrailing);
 
                 // determine the proceeding symbol
-                if (isValueInArray(m, greater_than_positions, greater_than_count)) {
+                if( isValueInArray(m, greater_than_positions, greater_than_count) ){
                     tmpshcmd->proceeding_special_character = GREATER_THAN_SYMBOL;
-                } else if (isValueInArray(next, less_than_positions, less_than_count)) {
+                } else if( isValueInArray(next, less_than_positions, less_than_count)){
                     tmpshcmd->proceeding_special_character = LESS_THAN_SYMBOL;
                 } else {
 
                     tmpshcmd->proceeding_special_character = NO_CHARACTER;
                 }
-                tmpshcmd->next = (struct shellcommand *) malloc(sizeof(struct shellcommand));
+                tmpshcmd->next = (struct shellcommand *)malloc(sizeof(struct shellcommand));
                 tmpshcmd = tmpshcmd->next;
-                tmpshcmd->next = NULL;
+                tmpshcmd->next=NULL;
             }
-        } else {
+        }  else {
             // handle the double symbol case [>>]
-            if (command[idx - 1] == '>' && command[next] == '>') {
+            if (command[idx-1] == '>' && command[next] == '>') {
                 tmpshcmd->command = malloc(2);
                 char carrots[3];
-                carrots[0] = command[idx - 1];
+                carrots[0] = command[idx-1];
                 carrots[1] = command[next];
                 carrots[2] = '\0';
 
                 strcpy(tmpshcmd->command, carrots);
                 tmpshcmd->proceeding_special_character = DOUBLE_GREATER_THAN_SYMBOL;
-                tmpshcmd->next = (struct shellcommand *) malloc(sizeof(struct shellcommand));
+                tmpshcmd->next = (struct shellcommand *)malloc(sizeof(struct shellcommand));
                 tmpshcmd = tmpshcmd->next;
                 tmpshcmd->next = NULL;
 
@@ -411,36 +389,36 @@ shellcontext *processCommand(char *input) {
         }
 
 
-        idx = next + 1;
+        idx = next+1;
     }
 
     int triple_or_more_greater_than_symbol_errors = 0;
     // clean up the linked list of commands
-    shellcommand *ll = c;
+    shellcommand* ll = c;
     while (ll->next != NULL) {
         // clean up >> & >>> duplicate entries
         if ((ll->proceeding_special_character == GREATER_THAN_SYMBOL) &&
-            (ll->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL)) {
+                (ll->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL)){
             // we have a potential case of >> or >>> n+1
             // we need to verify that the next of the next symbol is not mis interpreted as >>
             // this is an error case that needs to be accounted for
             if ((ll->next->next != NULL) &&
-                (ll->next->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL)) {
+                    (ll->next->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL)){
                 // we have hit the edge case of >>> or >> + n*(>) example: >>>>>>>>>>>
-                shellcommand *ltmp = ll->next;
-                while (ltmp->next != NULL
-                       && ltmp->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL) {
-                    shellcommand *lltmp = ltmp;
+                shellcommand* ltmp = ll->next;
+                while(ltmp->next != NULL
+                      && ltmp->next->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL){
+                    shellcommand* lltmp = ltmp;
                     ltmp = ltmp->next;
                     free(lltmp);
                 }
                 // we've by passed all of the double characters links now to clean up to indicate the error
                 ll->proceeding_special_character = DOUBLE_GREATER_THAN_SYMBOL;
-                ltmp->command[1] = '\0'; // remove the >> make >
+                ltmp->command[1]= '\0'; // remove the >> make >
                 ltmp->proceeding_special_character = GREATER_THAN_SYMBOL;
                 triple_or_more_greater_than_symbol_errors = 1;
 
-                if (ltmp->next != NULL) {
+                if(ltmp->next != NULL) {
                     ll->next = ltmp;
                 } else {
                     ll->next = NULL;
@@ -448,27 +426,27 @@ shellcontext *processCommand(char *input) {
 
             } else {
                 // we have hit the >> case and need to clean up the mis-interpretation
-                shellcommand *ltmp = ll->next;
+                shellcommand* ltmp = ll->next;
                 ll->proceeding_special_character = DOUBLE_GREATER_THAN_SYMBOL;
                 // skip the >> link and go to the next command
-                if (ll->next->next != NULL) {
+                if (ll->next->next!=NULL) {
                     ll->next = ltmp->next;
                     free(ltmp);
                 } else {
                     ll->next = NULL;
                 }
                 // keep the correct count for the input redirects
-                greater_than_count = greater_than_count - 2;
+                greater_than_count = greater_than_count-2;
             }
         }
 
         ll = ll->next;
     }
 
-    shellcommand *lll = c;
+    shellcommand* lll = c;
     // get the arguments from the context
     while (lll->next != NULL) {
-        if (lll->command != NULL && lll->command[0] != '\0') {
+        if (lll->command != NULL && lll->command[0] != '\0'){
 
             int bitor = 0;
             int aitor = 0;
@@ -478,20 +456,20 @@ shellcontext *processCommand(char *input) {
 
             int done_with_base = 0;
 
-            for (int i = 0; i < strlen(lll->command); i++) {
+            for(int i=0;i < strlen(lll->command);i++){
 
-                if (!done_with_base) {
+                if (!done_with_base){
                     // process the base command
-                    if ((lll->command[i] != '\0') && lll->command[i] != ' ') {
+                    if ((lll->command[i] != '\0') && lll->command[i] != ' '){
                         base_command[bitor] = lll->command[i];
                         bitor++;
                     }
-                    if (lll->command[i] == ' ') {
+                    if (lll->command[i] == ' '){
                         done_with_base = 1;
                     }
                 } else {
                     // process the arguments
-                    if ((lll->command[i] != '\0' && lll->command[i] != '\n' )) {
+                    if ((lll->command[i] != '\0')){
                         arguments[aitor] = lll->command[i];
                         aitor++;
                     }
@@ -510,7 +488,7 @@ shellcontext *processCommand(char *input) {
         lll = lll->next;
     }
 
-    shellcontext *sc = (struct shellcontext *) malloc(sizeof(struct shellcontext));
+    shellcontext *sc = (struct shellcontext *)malloc(sizeof(struct shellcontext));
     sc->greater_than_count = greater_than_count;
     sc->less_than_count = less_than_count;
     sc->triple_or_more_greater_than_symbol_errors = triple_or_more_greater_than_symbol_errors;
@@ -521,35 +499,33 @@ shellcontext *processCommand(char *input) {
 }
 
 
-int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
+int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx){
 
     int retVal = 0;
 
+    //printf("base_command = [%s]\n", shcntx->shellcommand->base_command);
+    //printf("arguements = [%s]\n", shcntx->shellcommand->arguments);
+
+
+
     // built in shell command, list jobs
-    if (strcmp(shcntx->shellcommand->base_command, "jobs") == 0) {
+    if (strcmp(shcntx->shellcommand->base_command,"jobs") == 0){
         listJobsListJobs(jobslist);
         retVal = 1;
     }
-    if (strcmp(shcntx->shellcommand->base_command, "cd") == 0) {
+    if (strcmp(shcntx->shellcommand->base_command,"cd") == 0){
         // check to make sure directory is specified within the arguements
-        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0') {
-
-            int chdir_result;
-            if (shcntx->shellcommand->arguments[0] == '~'){
-                chdir_result = chdir(getenv("HOME")); // TODO:// handle the case where ~/dir/dir, this only takes into account cd ~
-            } else {
-                chdir_result = chdir(shcntx->shellcommand->arguments);
-            }
-
-            if (chdir_result < 0) perror("cannot change directory");
+        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0'){
+            chdir(shcntx->shellcommand->arguments);
         } else {
             printf("ERROR - Can’t cd without a file path");
         }
         retVal = 1;
     }
-    if (strcmp(shcntx->shellcommand->base_command, "ln") == 0) {
+    if (strcmp(shcntx->shellcommand->base_command,"ln") == 0){
 
-        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0') {
+
+        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0'){
 
             // need to split the source and destination into 2 from the arguements.
             int sitor = 0;
@@ -560,20 +536,20 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
 
             int done_with_base = 0;
 
-            for (int i = 0; i < strlen(shcntx->shellcommand->arguments); i++) {
+            for(int i=0;i < strlen(shcntx->shellcommand->arguments);i++){
 
-                if (!done_with_base) {
+                if (!done_with_base){
                     // process the base command
-                    if ((shcntx->shellcommand->arguments[i] != '\0') && shcntx->shellcommand->arguments[i] != ' ') {
+                    if ((shcntx->shellcommand->arguments[i] != '\0') && shcntx->shellcommand->arguments[i] != ' '){
                         source[sitor] = shcntx->shellcommand->arguments[i];
                         sitor++;
                     }
-                    if (shcntx->shellcommand->arguments[i] == ' ') {
+                    if (shcntx->shellcommand->arguments[i] == ' '){
                         done_with_base = 1;
                     }
                 } else {
                     // process the arguments
-                    if ((shcntx->shellcommand->arguments[i] != '\0')) {
+                    if ((shcntx->shellcommand->arguments[i] != '\0')){
                         dest[ditor] = shcntx->shellcommand->arguments[i];
                         ditor++;
                     }
@@ -583,25 +559,29 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
             source[sitor] = '\0';
             dest[ditor] = '\0';
 
-            char *source_cmd = malloc(sitor + 1);
+            char * source_cmd = malloc(sitor + 1);
             strcpy(source_cmd, source);
 
-            char *dest_cmd = malloc(ditor + 1);
+            char * dest_cmd = malloc(ditor + 1);
             strcpy(dest_cmd, dest);
 
-
-            int ln_result = link(source_cmd, dest_cmd);
-            if (ln_result < 0){
-                perror("cannot link files: check file permissions, (source/dest) paths");
-            }
+            link(source_cmd,dest_cmd);
 
         } else {
             printf("ERROR - Can't link without source/destination");
         }
-
         // use the link command
+
+
         retVal = 1;
     }
+
+    /*
+    if (strcmp(shcntx->shellcommand->base_command,"jobs") == 0){
+
+        retVal = 1;
+    }
+    */
 
     return retVal;
 }
@@ -610,50 +590,56 @@ const int TOO_MANY_INPUT_REDIRECTS_IN_1_LINE = 1000;
 const int NO_REDIRECTION_FILE_SPECIFIED = 2000;
 const int TRIPLE_OR_MORE_GREATER_THAN_SYMBOLS = 3000;
 const int NO_COMMAND = 4000;
+//  1) no 2 input redirects in 1 line
+//  2) redirection file must be specified
 
-int shellCommandErrorsExist(shellcontext *shellcontext) {
+int shellCommandErrorsExist(shellcontext *shellcontext){
     int response = 0;
 
     // check if >>> or more exist in a line
-    if (shellcontext->triple_or_more_greater_than_symbol_errors) {
+    if(shellcontext->triple_or_more_greater_than_symbol_errors){
         response = TRIPLE_OR_MORE_GREATER_THAN_SYMBOLS;
     }
 
     // check for too many redirects
-    if ((response == 0) && (shellcontext->less_than_count > 1)) {
+    if((response == 0) && (shellcontext->less_than_count > 1)){
 
         response = TOO_MANY_INPUT_REDIRECTS_IN_1_LINE;
     }
 
+
+
     // check for valid input file
-    shellcommand *l = shellcontext->shellcommand;
+    shellcommand * l = shellcontext->shellcommand;
     while ((response == 0) && (l->next != NULL)) {
         // check for redirect
         if ((l->proceeding_special_character == LESS_THAN_SYMBOL) &&
-            (l->next != NULL)) {
+                (l->next != NULL)){
 
             // NEED TO HANDLE NULL LOGIC DOWN HERE
 
             // check for valid input not ""
-            if (l->next->command == '\0') {
+            if (l->next->command == '\0'){
                 response = NO_REDIRECTION_FILE_SPECIFIED;
             } else {
                 // check if file exists on disk to redirect from
                 // case :  [cat < file.txt]
                 // TODO://
             }
+
+
         }
 
         l = l->next;
     }
 
     // check for valid command
-    shellcommand *ll = shellcontext->shellcommand;
+    shellcommand * ll = shellcontext->shellcommand;
     while ((response == 0) && (ll->next != NULL)) {
 
         // Check fo rthe correct
         if ((ll->proceeding_special_character == GREATER_THAN_SYMBOL) &&
-            (ll->command[0] == '\0')) {
+                (ll->command[0] == '\0')){
             // ERROR ERROR - No command.
             response = NO_COMMAND;
         }
@@ -669,94 +655,131 @@ const int RUNNING_FOREGROUND = 1;
 const int RUNNING_BACKGROUND = 2;
 const int STOPPED_BACKGROUND = 3;
 
+
 static jobsllist shelljobs[0];
 
+void debug_environment(char **envp);
 
 #define PIPE_READ 0
 #define PIPE_WRITE 1
 
+int main(int argc, char **argv, char **envp){
 
-
-
-///////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////
-
-/// to implement background & foreground jobs use: https://stackoverflow.com/questions/31097058/sending-signal-from-parent-to-child
-
-
-// register the following signals in the child
-void sighup(int signo) {
-    signal(SIGHUP,sighup); /* reset signal */
-    printf("CHILD: I have received a SIGHUP\n");
-}
-
-void sigint(int signo) {
-    signal(SIGINT,sigint); /* reset signal */
-    printf("CHILD: I have received a SIGINT\n");
-}
-
-void sigquit(int signo) {
-    printf("My DADDY has Killed me!!!\n");
-    exit(0);
-}
-
-void sigchld(int signo){
-
-    pid_t pid;
-    int   status;
-    while ((pid = waitpid(-1, &status, WNOHANG)) != -1)
-    {
-        // removes the jobs when finished from the jobs list
-        //listJobsListJobs(shelljobs);
-        removeJobFromJobsListByPID(shelljobs, pid);
-        //listJobsListJobs(shelljobs);
-    }
-}
-
-///////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////
-
-
-
-int main(int argc, char **argv, char **envp) {
-
-    signal(SIGHUP, sighup);
-    signal(SIGINT, sigint);
-    signal(SIGQUIT, sigquit);
-    signal(SIGCHLD, sigchld);
-
-
-    // set the starting dir
+    // cd to the home directory when shell starts
+    // or else commands may not work w/ permissions
     chdir(getenv("HOME"));
+
+
+    int aStdinPipe[2];
+    int aStdoutPipe[2];
+    int nChild;
+    char nChar;
+    int nResult;
+
+    if (pipe(aStdinPipe) < 0) {
+        perror("allocating pipe for child input redirect");
+        return -1;
+    }
+    if (pipe(aStdoutPipe) < 0) {
+        close(aStdinPipe[PIPE_READ]);
+        close(aStdinPipe[PIPE_WRITE]);
+        perror("allocating pipe for child output redirect");
+        return -1;
+    }
+
+    nChild = fork();
+    if (0 == nChild) {
+        // child continues here
+
+        // redirect stdin
+        if (dup2(aStdinPipe[PIPE_READ], STDIN_FILENO) == -1) {
+            exit(errno);
+        }
+
+        // redirect stdout
+        if (dup2(aStdoutPipe[PIPE_WRITE], STDOUT_FILENO) == -1) {
+            exit(errno);
+        }
+
+        // redirect stderr
+        if (dup2(aStdoutPipe[PIPE_WRITE], STDERR_FILENO) == -1) {
+            exit(errno);
+        }
+
+        // all these are for use by parent only
+        close(aStdinPipe[PIPE_READ]);
+        close(aStdinPipe[PIPE_WRITE]);
+        close(aStdoutPipe[PIPE_READ]);
+        close(aStdoutPipe[PIPE_WRITE]);
+
+
+
+        char *argv[] = {"ls", "-las", NULL};
+        char *envp[] = { NULL };
+        // run child process image
+        // replace this with any exec* function find easier to use ("man exec")
+
+        nResult = execlp(argv[0],argv[0], argv[1],(char *) 0);
+        //
+        //nResult = execve(argv[0], argv, envp);
+
+        // if we get here at all, an error occurred, but we are in the child
+        // process, so just exit
+        exit(nResult);
+    } else if (nChild > 0) {
+        // parent continues here
+
+        // close unused file descriptors, these are for child only
+        close(aStdinPipe[PIPE_READ]);
+        close(aStdoutPipe[PIPE_WRITE]);
+
+        // Include error check here
+        //if (NULL != szMessage) {
+        //    write(aStdinPipe[PIPE_WRITE], szMessage, strlen(szMessage));
+        //}
+
+        // Just a char by char read here, you can change it accordingly
+        while (read(aStdoutPipe[PIPE_READ], &nChar, 1) == 1) {
+            write(STDOUT_FILENO, &nChar, 1);
+        }
+
+        // done with these in this example program, you would normally keep these
+        // open of course as long as you want to talk to the child
+        close(aStdinPipe[PIPE_WRITE]);
+        close(aStdoutPipe[PIPE_READ]);
+    } else {
+        // failed to create child
+        close(aStdinPipe[PIPE_READ]);
+        close(aStdinPipe[PIPE_WRITE]);
+        close(aStdoutPipe[PIPE_READ]);
+        close(aStdoutPipe[PIPE_WRITE]);
+    }
+
+
+
+    return 0;
+}
+
+int main2(int argc, char **argv, char **envp) {
 
     char command[MAX_READ_SIZE];
 
+    //debug_environment(envp);
+
     // add the shell to the jobs list
-    addJobsListJob(shelljobs, createJob(getpid(), NULL, RUNNING_FOREGROUND, "/bin/DPUShell"));
+    addJobsListJob(shelljobs, createJob(getpid(), RUNNING_FOREGROUND ,"/bin/DPUShell"));
 
-    // register [Ctrl+C] SIGINT handler
-
-    if (signal(SIGINT, signal_handler) == SIG_ERR){
-        printf("cannot register SIGINT handler\n");
-    }
-
-
+    // register the signal handlers to the above signal_handler function
+    if (signal(SIGINT, signal_handler) == SIG_ERR) // Ctrl+C
+        printf("\ncan't catch SIGINT\n");
 
     // start the event shell
-    while (1) {
-
-        /// clean buffer
-        for (int i = 0; i < MAX_READ_SIZE; i++) command[i] = 0;
-
-        #ifndef NOPROMPT
-        char cwd[1024];
-        getcwd(cwd, sizeof(cwd));
-        printf("[%s]> ", cwd);
-        fflush(stdout);
-        #endif
+    while(1){
+        printf("&> ");
+        fflush( stdout );
 
         // get user input
-        if (!dpuread(command)) {
+        if (!dpuread(command)){
             return 0;
         }
 
@@ -766,151 +789,196 @@ int main(int argc, char **argv, char **envp) {
         if (strlen(command) == 0) continue;
 
         // get the shell context and process command for execution
-        shellcontext *shcntx = processCommand(command);
+        shellcontext* shcntx = processCommand(command);
 
-        //listShellCommands(shcntx->shellcommand);
+        listShellCommands(shcntx->shellcommand);
 
         int errors_exist = 0;
 
-        switch (shellCommandErrorsExist(shcntx)) {
+        /*
+        switch (shellCommandErrorsExist(shcntx)){
 
-            case 1000: //TOO_MANY_INPUT_REDIRECTS_IN_1_LINE
+            case TOO_MANY_INPUT_REDIRECTS_IN_1_LINE:
                 printf("ERROR - Can’t have two input redirects on one line\n");
                 errors_exist = 1;
                 break;
-            case 2000: // NO_REDIRECTION_FILE_SPECIFIED
+            case NO_REDIRECTION_FILE_SPECIFIED:
                 printf("ERROR - No redirection file specified\n");
                 errors_exist = 1;
                 break;
-            case 3000: // TRIPLE_OR_MORE_GREATER_THAN_SYMBOLS
+            case TRIPLE_OR_MORE_GREATER_THAN_SYMBOLS:
                 printf("ERROR - Cannot have >>> or more [>]\n");
                 errors_exist = 1;
                 break;
-            case 4000: // NO_COMMAND
+            case NO_COMMAND:
                 printf("ERROR - No command\n");
                 errors_exist = 1;
                 break;
         }
-
+    */
         // check for builtin shell commands
-        if (!errors_exist && !isBuiltinShellCommand(shelljobs, shcntx)) {
+        if (!isBuiltinShellCommand(shelljobs, shcntx) && !errors_exist){
 
-            // create pipes for inter process comm.
-            int stdinPipe[2];
-            int stdoutPipe[2];
+            //
 
-            int child_pid;
-            char processOutput;
-            int exec_result_code;
 
-            if (pipe(stdinPipe) < 0) {
-                perror("allocating pipe for child input redirect");
-                return -1;
+
+
+            //printf("greater than count = [%i]\n", shcntx->greater_than_count);
+            //printf("less than count = [%i]\n", shcntx->less_than_count);
+            //listShellCommands(shcntx->shellcommand);
+
+
+
+
+
+            pid_t child_pid, wait_pid;
+            int status;
+
+
+            char *args[2];
+
+            args[0] = "/bin/ls";        // first arg is the full path to the executable
+            args[1] = NULL;             // list of args must be NULL terminated
+
+
+                //execv( args[0], args ); // child: call execv with the path and the args
+
+
+            int fd[2]; // file descriptors
+
+            // Create pipe
+            pipe(fd);
+
+            // Fork child process
+
+            if (!(child_pid=fork()))
+            {
+                char buffer [80];
+
+                // We're in the child process
+
+                // close stdin
+                close(0);
+
+                // connect pipe to stdin
+                dup(fd[0]);
+                close(fd[0]);
+
+                // read from stdin
+                //gets(buffer);
+
+                // Prove that it worked
+                //printf("Parent said %s", buffer);
+                execv( args[0], args );
+                exit(1);
             }
-            if (pipe(stdoutPipe) < 0) {
-                close(stdinPipe[PIPE_READ]);
-                close(stdinPipe[PIPE_WRITE]);
-                perror("allocating pipe for child output redirect");
-                return -1;
+            else
+            {
+                // We're in the parent process
+
+                // close stdout
+                close(1);
+
+                // connect pipe to stdout
+                dup(fd[1]);
+                close(fd[1]);
+
+                // Write to standard out
+                //printf ("Hello world!\n");
+                do {
+                       wait_pid = waitpid(child_pid, &status, WUNTRACED);
+                } while (!WIFEXITED(status) && !WIFSIGNALED(status));
             }
+            // the end
 
-            child_pid = fork();
-            if (0 == child_pid) { //child
 
-                // logic for dealing with redirects TODO:// a case where there is [  sort>out.txt<file.txt ] ** input is set to file.txt, then read by sort and output to out.txt
-                if (shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == LESS_THAN_SYMBOL) {
-                    int fin = open(shcntx->shellcommand->next->command, O_RDONLY);
-                    if (dup2(fin, STDIN_FILENO) == -1) exit(errno);
-                    close(fin);
+
+
+
+
+
+            /*
+            if (!(child_pid=fork())) { // child process executes this code here
+
+
+                //pipes
+                close(fd[PIPE_READ]);
+                dup2(fd[PIPE_WRITE], STDOUT_FILENO);
+                //pipes
+
+
+                // now in child process
+                char *argv[] = {"/bin/ls", NULL};
+                char *envp[] = { NULL };
+
+                //execlp(argv[0], argv[0]); //?? why does this work?????
+                execve(argv[0], argv, envp);
+
+                //execl("/bin/ls", "ls", "-1", (char *)0);
+                // we won't get here unless execve failed
+                if (errno == ENOENT){
+                    printf("sh: command not found: [%s]\n", argv[0]);
+                    exit(1);
                 } else {
-                    if (dup2(stdinPipe[PIPE_READ], STDIN_FILENO) == -1) exit(errno);
+                    printf("sh: execution of %s failed: [%s]\n", argv[0], strerror(errno));
+                    exit(1);
                 }
+            } else {
+                // parent process continues to run code
 
-                // handle the [command > file.txt] case
-                if (shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == GREATER_THAN_SYMBOL){ // write/overrwrite file
+                if (child_pid < 0){
+                    // error forking
+                    printf("Error Forking\n");
 
-                    // open up a file with the correct permissions
-                    int fout = open(shcntx->shellcommand->next->command, O_WRONLY | O_CREAT | O_TRUNC, 06666);
-                    if (dup2(fout, STDOUT_FILENO) == -1) exit(errno);
-                    if (dup2(fout, STDERR_FILENO) == -1) exit(errno);
-                    close(fout);
-                } else if(shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL) { // append to file
-                    // open up a file to append to
-                    int fout = open(shcntx->shellcommand->next->command, O_WRONLY | O_APPEND);
-                    if (dup2(fout, STDOUT_FILENO) == -1) exit(errno);
-                    if (dup2(fout, STDERR_FILENO) == -1) exit(errno);
-                    close(fout);
-                } else { // write to stdout
+                } else {
 
-                    if (dup2(stdoutPipe[PIPE_WRITE], STDOUT_FILENO) == -1) exit(errno);
-                    if (dup2(stdoutPipe[PIPE_WRITE], STDERR_FILENO) == -1) exit(errno);
+                    // creates new job, for the action
+                    job *newjob = createJob(child_pid, RUNNING_FOREGROUND , command); // TODO:// Insert the pid and the running state of the job
+                    addJobsListJob(shelljobs, newjob);
 
+
+                    char buffer[1024];
+
+                    //close(pipefd[1]);  // close the write end of the pipe in the parent
+
+                    close(fd[PIPE_WRITE]);
+                    // This is the parent process
+                    do {
+                        died = waitpid(pid, &exit_status, 0);
+                    } while (!WIFEXITED(exit_status));
+                    nbytes = read(fd[PIPE_READ], buf, sizeof(buf)-1);
+                    printf("exit value is: %d\nreceived: %s\n\n", exit_status, buf);
+                    close(fd[PIPE_READ]);
+
+
+                    //do {
+                    //    wait_pid = waitpid(child_pid, &status, WUNTRACED);
+                    //} while (!WIFEXITED(status) && !WIFSIGNALED(status));
                 }
-
-                // close the parent pipes
-                close(stdinPipe[PIPE_READ]);
-                close(stdinPipe[PIPE_WRITE]);
-                close(stdoutPipe[PIPE_READ]);
-                close(stdoutPipe[PIPE_WRITE]);
-
-                // split the arguments based on the whitespace
-                int itor=0;
-                int next_arr_ele = 0;
-
-                char *argv[100];
-                char tmpbuff[100];
-
-                for (int i=0;i <= strlen(shcntx->shellcommand->command); i++){
-
-                    if (((shcntx->shellcommand->command[i] == ' ') ||
-                         (shcntx->shellcommand->command[i] == '\0')) && itor != 0){
-                        tmpbuff[itor] = '\0';
-                        argv[next_arr_ele] = malloc(itor + 1);
-                        strcpy(argv[next_arr_ele], tmpbuff);
-                        next_arr_ele++;
-                        itor = 0;
-                    } else {
-                        tmpbuff[itor] = shcntx->shellcommand->command[i];
-                        itor++;
-                    }
-                }
-                argv[next_arr_ele] = NULL;
-                exec_result_code = execvp(argv[0], argv);
-
-                // exit with error code, if reaches this point
-                exit(exec_result_code);
-            } else if (child_pid > 0) {
-                // close unused file descriptors, these are for child only
-                close(stdinPipe[PIPE_READ]);
-                close(stdoutPipe[PIPE_WRITE]);
-
-                // create job, store the process output address to read it
-                // this allows us to support bg/fg jobs
-                job *newjob = createJob(child_pid, &processOutput, RUNNING_FOREGROUND, command); // TODO:// Insert the pid and the running state of the job
-                addJobsListJob(shelljobs, newjob);
-
-
-                // Just a char by char read here, you can change it accordingly
-                while (read(stdoutPipe[PIPE_READ], (void*)newjob->process_stdout_read_address, 1) == 1){
-
-                    write(STDOUT_FILENO, (void*)newjob->process_stdout_read_address, 1);
-
-                }
-
-                // done with these in this example program, you would normally keep these
-                // open of course as long as you want to talk to the child
-                close(stdinPipe[PIPE_WRITE]);
-                close(stdoutPipe[PIPE_READ]);
 
             }
-
-            if (strcmp(shcntx->shellcommand->base_command, "exit") == 0){
-                exit(0);
-            }
-
+            */
         }
+
+
+        /// dirty buffer need to clean to stop extra garbage from cropping up
+        for (int i = 0; i < MAX_READ_SIZE; i++)
+            command[i] = 0;
     }
+
     return 0;
 }
+
+void debug_environment(char **envp) {
+    char** env;
+    for (env = envp; *env != 0; env++)
+    {
+        char* thisEnv = *env;
+        printf("%s\n", thisEnv);
+    }
+}
+
+
 
 
