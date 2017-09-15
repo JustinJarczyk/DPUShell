@@ -605,6 +605,23 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
     }
 
 
+    if (strcmp(shcntx->shellcommand->base_command, "rm") == 0) {
+
+        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0') {
+
+            int unlink_result = unlink(shcntx->shellcommand->arguments);
+            if (unlink_result < 0){
+                perror("cannot rm files: check file permissions, paths");
+            }
+
+        } else {
+            printf("ERROR - Can't link without source/destination\n");
+        }
+
+        // use the link command
+        retVal = 1;
+    }
+
     if (strcmp(shcntx->shellcommand->base_command, "fg") == 0) {
         if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0'){
 
