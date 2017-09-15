@@ -11,20 +11,26 @@
 #define PIPE_READ 0
 #define PIPE_WRITE 1
 
+// read / write max sizes
 const int MAX_READ_SIZE = 1024;
 const int MAX_WRITE_SIZE = 1024;
+const int MAX_COMMANDS_IN_ONE_LINER = 1024;
 
-// TODO:// can have these dynamically allocate instead of hardcoded values
-const int MAX_COMMANDS_IN_ONE_LINER = 1024; // amount of total commands that can be processed in a one liner input command
+// Job States
+const int RUNNING_FOREGROUND = 1;
+const int RUNNING_BACKGROUND = 2;
+const int STOPPED_BACKGROUND = 3;
+
+
 
 //////////////////////////////////////////////////////////////////
-// Helpers, to meet project kernel requirements
+// Helpers
 //////////////////////////////////////////////////////////////////
 
 int dpuread(char *command) {
     command[0] = '\0';
     int num_read;
-    while (command[0] == '\0'){
+    while (command[0] == '\0') {
         num_read = read(STDIN_FILENO, command, MAX_READ_SIZE);
     }
     return num_read;
@@ -34,8 +40,6 @@ int dpuread(char *command) {
 //////////////////////////////////////////////////////////////////
 // JOBS/DATA STRUCTURES (holds all information about jobs, getters, setters, list accessibility)
 //////////////////////////////////////////////////////////////////
-// holds all info for a shell job
-// struct reference: https://stackoverflow.com/questions/10162152/how-to-work-with-string-fields-in-a-c-struct
 typedef struct job {
     int id;
     int pid;
@@ -48,14 +52,14 @@ typedef struct job {
 // because chars can be of variable size
 // we need to allocate them based on the command
 // we don't want to over allocate memory -> inefficient
-job *createJob(int pid, char* output_address_pointer, int readpipe, int state, char *command) {
+job *createJob(int pid, char *output_address_pointer, int readpipe, int state, char *command) {
 
     job *j = (struct job *) malloc(sizeof(struct job));
     j->id = -1; // initialize with -1 until added to the jobslist
     j->pid = pid;
     j->state = state;
     j->command = strdup(command);
-    j->process_stdout_read_address = (size_t)output_address_pointer;
+    j->process_stdout_read_address = (size_t) output_address_pointer;
     j->readpipe = readpipe;
 
     return j;
@@ -86,19 +90,19 @@ void *removeJobFromJobsListByPID(jobsllist *jobs, int pid) {
     jobsllist *l = jobs;
     jobsllist *prev = NULL;
     while (l != NULL) {
-        if (l->job->pid == pid){
-          if (l->next != NULL){
-              jobsllist *tmp = l;
-              prev->next = l->next;
-              free(tmp);
-          }  else {
-              if (prev != NULL){
-                  // isn't the base DPUShell Job
-                  prev->next = NULL;
-                  free(l->job);
-                  free(l);
-              }
-          }
+        if (l->job->pid == pid) {
+            if (l->next != NULL) {
+                jobsllist *tmp = l;
+                prev->next = l->next;
+                free(tmp);
+            } else {
+                if (prev != NULL) {
+                    // isn't the base DPUShell Job
+                    prev->next = NULL;
+                    free(l->job);
+                    free(l);
+                }
+            }
         }
         prev = l;
         l = l->next;
@@ -111,7 +115,7 @@ void *listJobsListJobs(jobsllist *jobs) {
     jobsllist *l = jobs;
     while (l != NULL) {
 
-        if (l->job->id != 0){ // bypass the DPUSHell Job
+        if (l->job->id != 0) { // bypass the DPUSHell Job
 
             if (l->job->state == 1)
                 printf("[%i]\t[%i]\t[FOREGROUND]\t[%s]\n", l->job->id, l->job->pid, l->job->command);
@@ -181,6 +185,7 @@ typedef struct shellcommand {
 } shellcommand;
 
 
+// debug function
 void *listShellCommands(shellcommand *commands) {
     shellcommand *l = commands;
     while (l->next != NULL) {
@@ -198,6 +203,7 @@ int isValueInArray(int val, int *arr, int size) {
     }
     return 0;
 }
+
 
 shellcontext *processCommand(char *input) {
 
@@ -492,7 +498,7 @@ shellcontext *processCommand(char *input) {
                     }
                 } else {
                     // process the arguments
-                    if ((lll->command[i] != '\0' && lll->command[i] != '\n' )) {
+                    if ((lll->command[i] != '\0' && lll->command[i] != '\n')) {
                         arguments[aitor] = lll->command[i];
                         aitor++;
                     }
@@ -536,8 +542,9 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
         if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0') {
 
             int chdir_result;
-            if (shcntx->shellcommand->arguments[0] == '~'){
-                chdir_result = chdir(getenv("HOME")); // TODO:// handle the case where ~/dir/dir, this only takes into account cd ~
+            if (shcntx->shellcommand->arguments[0] == '~') {
+                chdir_result = chdir(
+                        getenv("HOME")); // TODO:// handle the case where ~/dir/dir, this only takes into account cd ~
             } else {
                 chdir_result = chdir(shcntx->shellcommand->arguments);
             }
@@ -592,7 +599,7 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
 
 
             int ln_result = link(source_cmd, dest_cmd);
-            if (ln_result < 0){
+            if (ln_result < 0) {
                 perror("cannot link files: check file permissions, (source/dest) paths");
             }
 
@@ -610,7 +617,7 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
         if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0') {
 
             int unlink_result = unlink(shcntx->shellcommand->arguments);
-            if (unlink_result < 0){
+            if (unlink_result < 0) {
                 perror("cannot rm files: check file permissions, paths");
             }
 
@@ -623,12 +630,12 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
     }
 
     if (strcmp(shcntx->shellcommand->base_command, "fg") == 0) {
-        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0'){
+        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0') {
 
             jobsllist *target;
             jobsllist *l = jobslist;
             while (l != NULL) {
-                if ((l->job->id != 0) && (l->job->id == atoi(shcntx->shellcommand->arguments))){
+                if ((l->job->id != 0) && (l->job->id == atoi(shcntx->shellcommand->arguments))) {
                     l->job->state = 1;
                     target = l;
                 }
@@ -638,11 +645,11 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
             // traps the current running process in the shell
             int maxRetry = 3;
             int currRetry = 0;
-            while (currRetry < maxRetry){
+            while (currRetry < maxRetry) {
                 kill(target->job->pid, SIGCONT);
-                while (read(target->job->readpipe, (void*)target->job->process_stdout_read_address, 1) == 1){
-                    write(STDOUT_FILENO, (void*)target->job->process_stdout_read_address, 1);
-                    currRetry=maxRetry;
+                while (read(target->job->readpipe, (void *) target->job->process_stdout_read_address, 1) == 1) {
+                    write(STDOUT_FILENO, (void *) target->job->process_stdout_read_address, 1);
+                    currRetry = maxRetry;
                 }
                 currRetry++;
             }
@@ -652,12 +659,12 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
     }
 
     if (strcmp(shcntx->shellcommand->base_command, "bg") == 0) {
-        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0'){
+        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0') {
 
 
             jobsllist *l = jobslist;
             while (l != NULL) {
-                if ((l->job->id != 0) && (l->job->id == atoi(shcntx->shellcommand->arguments))){
+                if ((l->job->id != 0) && (l->job->id == atoi(shcntx->shellcommand->arguments))) {
                     l->job->state = 1;
                     // continue the background jobs
                     l->job->state = 2;
@@ -697,27 +704,17 @@ int shellCommandErrorsExist(shellcontext *shellcontext) {
         // check for redirect
         if ((l->proceeding_special_character == LESS_THAN_SYMBOL) &&
             (l->next != NULL)) {
-
-            // NEED TO HANDLE NULL LOGIC DOWN HERE
-
             // check for valid input not ""
             if (l->next->command == '\0') {
                 response = NO_REDIRECTION_FILE_SPECIFIED;
-            } else {
-                // check if file exists on disk to redirect from
-                // case :  [cat < file.txt]
-                // TODO://
             }
         }
-
         l = l->next;
     }
 
     // check for valid command
     shellcommand *ll = shellcontext->shellcommand;
     while ((response == 0) && (ll->next != NULL)) {
-
-        // Check fo rthe correct
         if ((ll->proceeding_special_character == GREATER_THAN_SYMBOL) &&
             (ll->command[0] == '\0')) {
             // ERROR ERROR - No command.
@@ -725,46 +722,27 @@ int shellCommandErrorsExist(shellcontext *shellcontext) {
         }
         ll = ll->next;
     }
-
     return response;
 }
-
-
-// main runtime constants
-const int RUNNING_FOREGROUND = 1;
-const int RUNNING_BACKGROUND = 2;
-const int STOPPED_BACKGROUND = 3;
 
 static jobsllist shelljobs[0];
 
 
-#define PIPE_READ 0
-#define PIPE_WRITE 1
+// handles signals to control background and foreground jobs
+void signal_handler(int action) {
 
-
-
-
-///////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////
-
-/// to implement background & foreground jobs use: https://stackoverflow.com/questions/31097058/sending-signal-from-parent-to-child
-
-
-void signal_handler(int action){
-
-    if (action == SIGCHLD){
+    if (action == SIGCHLD) {
         pid_t pid;
-        int   status;
-        while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
-        {
+        int status;
+        while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
             removeJobFromJobsListByPID(shelljobs, pid);
         }
     }
 
-    if (action == SIGTSTP){ // burned 2hr on SIGTSTP v. SIGSTOP
+    if (action == SIGTSTP) { // burned 2hr on SIGTSTP v. SIGSTOP
         jobsllist *l = shelljobs;
         while (l != NULL) {
-            if ((l->job->id != 0) && (l->job->state == RUNNING_FOREGROUND)){
+            if ((l->job->id != 0) && (l->job->state == RUNNING_FOREGROUND)) {
                 l->job->state = STOPPED_BACKGROUND;
                 kill(l->job->pid, SIGSTOP);
             }
@@ -772,10 +750,10 @@ void signal_handler(int action){
         }
     }
 
-    if (action == SIGINT){
+    if (action == SIGINT) {
         jobsllist *l = shelljobs;
         while (l != NULL) {
-            if ((l->job->id != 0) && (l->job->state == RUNNING_FOREGROUND)){
+            if ((l->job->id != 0) && (l->job->state == RUNNING_FOREGROUND)) {
                 // JOB STATE WILL BE HANDLED WHEN SIGCHLD IS CALLED ON KILL
                 kill(l->job->pid, SIGCONT);
             }
@@ -786,10 +764,6 @@ void signal_handler(int action){
 
 }
 
-///////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////
-
-
 
 int main(int argc, char **argv, char **envp) {
 
@@ -798,17 +772,17 @@ int main(int argc, char **argv, char **envp) {
     sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
 
-    if ( sigaction(SIGTSTP, &sa, NULL) == -1 ) {
+    if (sigaction(SIGTSTP, &sa, NULL) == -1) {
         perror("Error SIGTSTP handler");
         exit(EXIT_FAILURE);
     }
 
-    if ( sigaction(SIGCHLD, &sa, NULL) == -1 ) {
+    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
         perror("Error SIGCHLD handler");
         exit(EXIT_FAILURE);
     }
 
-    if ( sigaction(SIGINT, &sa, NULL) == -1 ) {
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
         perror("Error SIGINT handler");
         exit(EXIT_FAILURE);
     }
@@ -831,12 +805,12 @@ int main(int argc, char **argv, char **envp) {
         /// clean buffer
         for (int i = 0; i < MAX_READ_SIZE; i++) command[i] = 0;
 
-        #ifndef NOPROMPT
+#ifndef NOPROMPT
         char cwd[1024];
         getcwd(cwd, sizeof(cwd));
         printf("[%s]> ", cwd);
         fflush(stdout);
-        #endif
+#endif
 
         // get user input
         if (!dpuread(command)) return 0;
@@ -899,34 +873,57 @@ int main(int argc, char **argv, char **envp) {
             child_pid = fork();
             if (0 == child_pid) { //child
 
+
+                // bypass stdinlogic check
+                int bypassStdinLogicCheck = 0;
                 // logic for dealing with redirects TODO:// a case where there is [  sort>out.txt<file.txt ] ** input is set to file.txt, then read by sort and output to out.txt
-                if (shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == LESS_THAN_SYMBOL) {
-                    int fin = open(shcntx->shellcommand->next->command, O_RDONLY);
+
+                if ((shcntx->shellcommand->next != NULL) &&
+                    (shcntx->shellcommand->proceeding_special_character == GREATER_THAN_SYMBOL) &&
+                    (shcntx->shellcommand->next->next != NULL) &&
+                    (shcntx->shellcommand->next->proceeding_special_character == LESS_THAN_SYMBOL)) {
+                    // handle the [  sort>out.txt<file.txt ] edge case
+
+                    printf("inside");
+                    int fin = open(shcntx->shellcommand->next->next->command, O_RDONLY);
                     if (dup2(fin, STDIN_FILENO) == -1) exit(errno);
                     close(fin);
-                } else {
-                    if (dup2(stdinPipe[PIPE_READ], STDIN_FILENO) == -1) exit(errno);
+                    // output file is set below
+                    bypassStdinLogicCheck = 1;
+                }
+
+                if (!bypassStdinLogicCheck){
+                    if ((shcntx->shellcommand->next != NULL) &&
+                        (shcntx->shellcommand->proceeding_special_character == LESS_THAN_SYMBOL)) {
+                        int fin = open(shcntx->shellcommand->next->command, O_RDONLY);
+                        if (dup2(fin, STDIN_FILENO) == -1) exit(errno);
+                        close(fin);
+                    } else {
+                        if (dup2(stdinPipe[PIPE_READ], STDIN_FILENO) == -1) exit(errno);
+                    }
                 }
 
                 // handle the [command > file.txt] case
-                if (shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == GREATER_THAN_SYMBOL){ // write/overrwrite file
+                if (shcntx->shellcommand->next != NULL &&
+                    shcntx->shellcommand->proceeding_special_character ==
+                    GREATER_THAN_SYMBOL) { // write/overrwrite file
 
                     // open up a file with the correct permissions
                     int fout = open(shcntx->shellcommand->next->command, O_WRONLY | O_CREAT | O_TRUNC, 06666);
                     if (dup2(fout, STDOUT_FILENO) == -1) exit(errno);
                     if (dup2(fout, STDERR_FILENO) == -1) exit(errno);
                     close(fout);
-                } else if(shcntx->shellcommand->next != NULL && shcntx->shellcommand->proceeding_special_character == DOUBLE_GREATER_THAN_SYMBOL) { // append to file
+                } else if (shcntx->shellcommand->next != NULL &&
+                           shcntx->shellcommand->proceeding_special_character ==
+                           DOUBLE_GREATER_THAN_SYMBOL) { // append to file
                     // open up a file to append to
                     int fout = open(shcntx->shellcommand->next->command, O_WRONLY | O_APPEND);
                     if (dup2(fout, STDOUT_FILENO) == -1) exit(errno);
                     if (dup2(fout, STDERR_FILENO) == -1) exit(errno);
                     close(fout);
                 } else { // write to stdout
-
                     if (dup2(stdoutPipe[PIPE_WRITE], STDOUT_FILENO) == -1) exit(errno);
                     if (dup2(stdoutPipe[PIPE_WRITE], STDERR_FILENO) == -1) exit(errno);
-
                 }
 
                 // close the parent pipes
@@ -936,16 +933,16 @@ int main(int argc, char **argv, char **envp) {
                 close(stdoutPipe[PIPE_WRITE]);
 
                 // split the arguments based on the whitespace
-                int itor=0;
+                int itor = 0;
                 int next_arr_ele = 0;
 
                 char *argv[100];
                 char tmpbuff[100];
 
-                for (int i=0;i <= strlen(shcntx->shellcommand->command); i++){
+                for (int i = 0; i <= strlen(shcntx->shellcommand->command); i++) {
 
                     if (((shcntx->shellcommand->command[i] == ' ') ||
-                         (shcntx->shellcommand->command[i] == '\0')) && itor != 0){
+                         (shcntx->shellcommand->command[i] == '\0')) && itor != 0) {
                         tmpbuff[itor] = '\0';
                         argv[next_arr_ele] = malloc(itor + 1);
                         strcpy(argv[next_arr_ele], tmpbuff);
@@ -968,24 +965,22 @@ int main(int argc, char **argv, char **envp) {
 
                 // create job, store the process output address to read it
                 // this allows us to support bg/fg jobs
-                job *newjob = createJob(child_pid, &processOutput, stdoutPipe[PIPE_READ], RUNNING_FOREGROUND, command); // TODO:// Insert the pid and the running state of the job
+                job *newjob = createJob(child_pid, &processOutput, stdoutPipe[PIPE_READ], RUNNING_FOREGROUND, command);
                 addJobsListJob(shelljobs, newjob);
 
-                while (read(stdoutPipe[PIPE_READ], (void*)newjob->process_stdout_read_address, 1) == 1){
-                    write(STDOUT_FILENO, (void*)newjob->process_stdout_read_address, 1);
-
+                while (read(stdoutPipe[PIPE_READ], (void *) newjob->process_stdout_read_address, 1) == 1) {
+                    write(STDOUT_FILENO, (void *) newjob->process_stdout_read_address, 1);
                 }
             }
 
-            if (strcmp(shcntx->shellcommand->base_command, "exit") == 0){
+            if (strcmp(shcntx->shellcommand->base_command, "exit") == 0) {
                 exit(0);
             }
 
-            // clean up memory
-            shellcommand* t = shcntx->shellcommand->next;
-
-            while(t != NULL) {
-                shellcommand * i = t->next;
+            // clean up allocated commands
+            shellcommand *t = shcntx->shellcommand->next;
+            while (t != NULL) {
+                shellcommand *i = t->next;
                 free(t);
                 t = i;
             }
