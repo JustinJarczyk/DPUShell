@@ -22,11 +22,7 @@ const int MAX_COMMANDS_IN_ONE_LINER = 1024; // amount of total commands that can
 //////////////////////////////////////////////////////////////////
 
 int dpuread(char *command) {
-    command[0] = '\0';
-    int num_read;
-    while (command[0] == '\0'){
-        num_read = read(STDIN_FILENO, command, MAX_READ_SIZE);
-    }
+    int num_read = read(STDIN_FILENO, command, MAX_READ_SIZE);
     return num_read;
 
 }
@@ -544,7 +540,7 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
 
             if (chdir_result < 0) perror("cannot change directory");
         } else {
-            printf("ERROR - Can’t cd without a file path\n");
+            printf("ERROR - Can’t cd without a file path");
         }
         retVal = 1;
     }
@@ -597,7 +593,7 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
             }
 
         } else {
-            printf("ERROR - Can't link without source/destination\n");
+            printf("ERROR - Can't link without source/destination");
         }
 
         // use the link command
@@ -634,23 +630,7 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
         retVal = 1;
     }
 
-    if (strcmp(shcntx->shellcommand->base_command, "bg") == 0) {
-        if (shcntx->shellcommand->arguments != NULL || shcntx->shellcommand->arguments != '\0'){
 
-
-            jobsllist *l = jobslist;
-            while (l != NULL) {
-                if ((l->job->id != 0) && (l->job->id == atoi(shcntx->shellcommand->arguments))){
-                    l->job->state = 1;
-                    // continue the background jobs
-                    l->job->state = 2;
-                    kill(l->job->pid, SIGCONT);
-                }
-                l = l->next;
-            }
-        }
-        retVal = 1;
-    }
 
     return retVal;
 }
@@ -744,6 +724,7 @@ void signal_handler(int action){
         }
     }
 
+
     if (action == SIGTSTP){ // burned 2hr on SIGTSTP v. SIGSTOP
         jobsllist *l = shelljobs;
         while (l != NULL) {
@@ -767,6 +748,9 @@ void signal_handler(int action){
     }
 
 
+    if (action == SIGQUIT){
+        printf("recieved SIGQUIT\n");
+    }
 }
 
 ///////////////////////////////////////////////////////////////
@@ -775,6 +759,17 @@ void signal_handler(int action){
 
 
 int main(int argc, char **argv, char **envp) {
+
+
+    /*
+    struct sigaction psa;
+    psa.sa_handler = signal_handler;
+    sigaction(SIGINT, &psa, NULL);
+    sigaction(SIGQUIT, &psa, NULL);
+    sigaction(SIGCHLD, &psa, NULL);
+    sigaction(SIGTSTP, &psa, NULL);
+     */
+
 
     struct sigaction sa;
     sa.sa_handler = signal_handler;
@@ -804,12 +799,12 @@ int main(int argc, char **argv, char **envp) {
     // add the shell to the jobs list
     addJobsListJob(shelljobs, createJob(getpid(), NULL, -1, RUNNING_FOREGROUND, "/bin/DPUShell"));
 
-    int throttleprnt = 0;
+
+
+
 
     // start the event shell
     while (1) {
-
-
 
         /// clean buffer
         for (int i = 0; i < MAX_READ_SIZE; i++) command[i] = 0;
@@ -822,8 +817,9 @@ int main(int argc, char **argv, char **envp) {
         #endif
 
         // get user input
-        if (!dpuread(command)) return 0;
-
+        if (!dpuread(command)) {
+            return 0;
+        }
 
         // clean input and verify command is not nothing
         command[strlen(command) - 1] = 0; // replace \n w/ \0
@@ -954,25 +950,36 @@ int main(int argc, char **argv, char **envp) {
                 job *newjob = createJob(child_pid, &processOutput, stdoutPipe[PIPE_READ], RUNNING_FOREGROUND, command); // TODO:// Insert the pid and the running state of the job
                 addJobsListJob(shelljobs, newjob);
 
+
+                // Just a char by char read here, you can change it accordingly
+
                 while (read(stdoutPipe[PIPE_READ], (void*)newjob->process_stdout_read_address, 1) == 1){
                     write(STDOUT_FILENO, (void*)newjob->process_stdout_read_address, 1);
-
                 }
+
+
+
+                /*
+                int childStatus;
+                do {
+                    waitpid(child_pid, &childStatus, WUNTRACED);
+                } while (!WIFEXITED(childStatus) && !WIFSIGNALED(childStatus));
+
+                 */
+                // done with these in this example program, you would normally keep these
+                // open of course as long as you want to talk to the child
+
+                //close(stdinPipe[PIPE_WRITE]);
+                //close(stdoutPipe[PIPE_READ]);
+
             }
+
 
             if (strcmp(shcntx->shellcommand->base_command, "exit") == 0){
                 exit(0);
             }
+            fflush(stdout);
 
-            // clean up memory
-            shellcommand* t = shcntx->shellcommand->next;
-
-            while(t != NULL) {
-                shellcommand * i = t->next;
-                free(t);
-                t = i;
-            }
-            free(shcntx);
         }
     }
     return 0;
