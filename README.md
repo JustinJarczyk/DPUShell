@@ -1,4 +1,4 @@
-# DPUShell
+# DPUShell https://github.com/JustinJarczyk/DPUShell
 
 ## Setting up your development Environment
 

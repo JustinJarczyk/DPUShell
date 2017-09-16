@@ -645,8 +645,10 @@ int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
             // traps the current running process in the shell
             int maxRetry = 3;
             int currRetry = 0;
+            kill(target->job->pid, SIGCONT);
+
             while (currRetry < maxRetry) {
-                kill(target->job->pid, SIGCONT);
+
                 while (read(target->job->readpipe, (void *) target->job->process_stdout_read_address, 1) == 1) {
                     write(STDOUT_FILENO, (void *) target->job->process_stdout_read_address, 1);
                     currRetry = maxRetry;
