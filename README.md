@@ -1,5 +1,54 @@
 # DPUShell https://github.com/JustinJarczyk/DPUShell
 
+
+=============================================================================
+# Assignment Deliverables
+
+## Assignment 1 - Writing your own Shell
+
+=============================================================================
+
+## Project overview.
+
+The DPUShell is a unix shell, it has similar functionality to the bash shell. 
+It provides a way of interacting and manipulating the Filesystem to execute programs.
+In addition to executing CLI Binaries, the DPUShell has the ability to redirect STDIN, STDOUT to files on the FS.
+Job delegation and controls are supported. Please see the list of details below
+
+Redirection Command list
+- '<' # read
+- '>' # write
+- '>>' # append
+
+Usage Examples
+- < bar /bin/cat
+- /bin/ls < foo
+- /bin/bug -p1 -p2 foobar
+- cat>bar<README
+
+Builtin Commands
+- cd {{dir}}
+- ln {{src}} {{dest}}
+- rm {{file}}
+- exit
+- jobs # lists all running jobs
+- fg {{job id}} # bring a job to the foreground (example: fg 1 or fg 2) ** note no %1, %2 like in bash
+
+
+## Assumptions made, if any.
+
+Many 
+
+## Any Design decisions you had to make or issues you faced, in brief. 4. Summary (include any specific new learnings, if possible).
+
+
+## Source Code in Appendix.
+
+
+=============================================================================
+
+
+
 ## Setting up your development Environment
 
 - OS : ubuntu-16.04.3-server-amd64.iso
@@ -56,7 +105,7 @@ Setup Networking (varies per machine)
     - try to ssh into the running vm from your local machine "ssh ninja@{{your vm ip address}}"
    
    
-# Setup & your test shell for the 'ninja' user account
+# Setup your test shell for the 'ninja' user account
 
 ** you need cmake 3.8.2
 
@@ -70,7 +119,7 @@ Setup Networking (varies per machine)
 
 --- 
 
-# setting up the ninja user
+# Setting up the ninja user
 - run /srv/DPUShell/build/build_install.sh, to cmake, build and setup the existing ninja users shell
 
 ** for testing purposes, setup ssh key access for the ninja user saves you a lot of time by not having to enter in your password
@@ -83,25 +132,6 @@ Setup Networking (varies per machine)
     - This will build and deploy your shell as the default shell for the test user
 - ssh into the vm as ninja@x.x.x.x and your shell will execute
 - repeat the process
-
-
-====================
-# Assumptions Made
-
-- Signals: https://www.tutorialspoint.com/unix/unix-signals-traps.htm
-    - Only monitoring the following signals
-    - SIGHUP	[1]	Hang up detected on controlling terminal or death of controlling process
-    - SIGINT	[2]	Issued if the user sends an interrupt signal (Ctrl + C)
-    - SIGQUIT	[3]	Issued if the user sends a quit signal (Ctrl + D)
-    - SIGTERM	[15]	Software termination signal (sent by kill by default)
-
-
- 
-
-
-
-
-      
 
 
 
