@@ -13,8 +13,6 @@
 
 // read / write max sizes
 const int MAX_READ_SIZE = 1024;
-const int MAX_WRITE_SIZE = 1024;
-const int MAX_COMMANDS_IN_ONE_LINER = 1024;
 
 // Job States
 const int RUNNING_FOREGROUND = 1;
@@ -886,7 +884,6 @@ int main(int argc, char **argv, char **envp) {
                     (shcntx->shellcommand->next->proceeding_special_character == LESS_THAN_SYMBOL)) {
                     // handle the [  sort>out.txt<file.txt ] edge case
 
-                    printf("inside");
                     int fin = open(shcntx->shellcommand->next->next->command, O_RDONLY);
                     if (dup2(fin, STDIN_FILENO) == -1) exit(errno);
                     close(fin);
