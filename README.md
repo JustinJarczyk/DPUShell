@@ -55,6 +55,7 @@ Builtin Commands
 ## Any Design decisions you had to make or issues you faced, in brief. 4. Summary (include any specific new learnings, if possible).
 
 ## Design Decisions
+ 
 
 ### Issues & Solutions
 
@@ -128,6 +129,9 @@ Methods
     - Adds a job to the jobsllist
  
 ### Commands & Command Context
+
+I chose to have the shellcommands represented as a linked list because it allowed the program to be extensible and
+modular while being able to handle more complicated commands.
 
 The [struct shellcontext] handles all of the metadata for [struct shellcommand] to be executed. 
 
