@@ -35,6 +35,15 @@ int dpuread(char *command) {
 
 }
 
+int isValueInArray(int val, int *arr, int size) {
+    int i;
+    for (i = 0; i < size; i++) {
+        if (arr[i] == val)
+            return 1;
+    }
+    return 0;
+}
+
 //////////////////////////////////////////////////////////////////
 // JOBS/DATA STRUCTURES (holds all information about jobs, getters, setters, list accessibility)
 //////////////////////////////////////////////////////////////////
@@ -46,6 +55,14 @@ typedef struct job {
     size_t process_stdout_read_address;
     int readpipe;
 } job;
+
+// create a job list
+// chose a linked list for easy traversal
+typedef struct jobsllist {
+    job *job;
+    struct jobsllist *next;
+
+} jobsllist;
 
 // because chars can be of variable size
 // we need to allocate them based on the command
@@ -62,27 +79,6 @@ job *createJob(int pid, char *output_address_pointer, int readpipe, int state, c
 
     return j;
 }
-
-// create a job list
-// chose a linked list for easy traversal
-typedef struct jobsllist {
-    job *job;
-    struct jobsllist *next;
-
-} jobsllist;
-
-// Jobs List helper methods
-job *getJobFromJobsListById(jobsllist *jobs, int id) {
-    jobsllist *l = jobs;
-    while (l != NULL) {
-        if (l->job->id == id) {
-            return l->job;
-        }
-        l = l->next;
-    }
-    return NULL;
-}
-
 
 void *removeJobFromJobsListByPID(jobsllist *jobs, int pid) {
     jobsllist *l = jobs;
@@ -107,7 +103,6 @@ void *removeJobFromJobsListByPID(jobsllist *jobs, int pid) {
     }
     return 0;
 }
-
 
 void *listJobsListJobs(jobsllist *jobs) {
     jobsllist *l = jobs;
@@ -192,16 +187,6 @@ void *listShellCommands(shellcommand *commands) {
     }
     return 0;
 }
-
-int isValueInArray(int val, int *arr, int size) {
-    int i;
-    for (i = 0; i < size; i++) {
-        if (arr[i] == val)
-            return 1;
-    }
-    return 0;
-}
-
 
 shellcontext *processCommand(char *input) {
 
@@ -525,6 +510,9 @@ shellcontext *processCommand(char *input) {
 
 }
 
+//////////////////////////////////////////////////////////////////
+//  Builtin commands & Error Validation
+//////////////////////////////////////////////////////////////////
 
 int isBuiltinShellCommand(jobsllist *jobslist, shellcontext *shcntx) {
 
@@ -727,7 +715,6 @@ int shellCommandErrorsExist(shellcontext *shellcontext) {
 
 static jobsllist shelljobs[0];
 
-
 // handles signals to control background and foreground jobs
 void signal_handler(int action) {
 
@@ -760,8 +747,6 @@ void signal_handler(int action) {
             l = l->next;
         }
     }
-
-
 }
 
 
@@ -795,12 +780,8 @@ int main(int argc, char **argv, char **envp) {
     // add the shell to the jobs list
     addJobsListJob(shelljobs, createJob(getpid(), NULL, -1, RUNNING_FOREGROUND, "/bin/DPUShell"));
 
-    int throttleprnt = 0;
-
     // start the event shell
     while (1) {
-
-
 
         /// clean buffer
         for (int i = 0; i < MAX_READ_SIZE; i++) command[i] = 0;
@@ -860,23 +841,22 @@ int main(int argc, char **argv, char **envp) {
             int exec_result_code;
 
             if (pipe(stdinPipe) < 0) {
-                perror("allocating pipe for child input redirect");
+                perror("error creating stdin pipe");
                 return -1;
             }
             if (pipe(stdoutPipe) < 0) {
                 close(stdinPipe[PIPE_READ]);
                 close(stdinPipe[PIPE_WRITE]);
-                perror("allocating pipe for child output redirect");
+                perror("error creating stdout pipe");
                 return -1;
             }
 
             child_pid = fork();
             if (0 == child_pid) { //child
 
-
                 // bypass stdinlogic check
                 int bypassStdinLogicCheck = 0;
-                // logic for dealing with redirects TODO:// a case where there is [  sort>out.txt<file.txt ] ** input is set to file.txt, then read by sort and output to out.txt
+                // logic for dealing with redirects
 
                 if ((shcntx->shellcommand->next != NULL) &&
                     (shcntx->shellcommand->proceeding_special_character == GREATER_THAN_SYMBOL) &&
